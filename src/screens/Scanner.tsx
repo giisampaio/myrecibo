@@ -34,12 +34,6 @@ export default function Scanner() {
 
   useEffect(() => {
     startCamera()
-    // Pré-carrega o OpenCV em segundo plano para já estar pronto na hora da foto
-    loadOpenCV()
-      .then((cv) => {
-        if (cv) scannerRef.current = new JScanify()
-      })
-      .catch(() => {})
     return () => stopCamera()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -182,7 +176,14 @@ export default function Scanner() {
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
       {/* Câmera ao vivo (fica montada para não reiniciar ao refazer) */}
       <div className="relative flex-1 overflow-hidden">
-        <video ref={videoRef} className="h-full w-full object-cover" playsInline muted autoPlay />
+        <video
+          ref={videoRef}
+          className="h-full w-full object-cover"
+          playsInline
+          muted
+          autoPlay
+          onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
+        />
 
         {/* Moldura-guia */}
         {mode === 'camera' && !cameraError && (

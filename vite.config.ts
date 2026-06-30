@@ -27,16 +27,28 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // App roda offline: cacheia o shell e os assets
+        // App roda offline: cacheia o shell. O OpenCV (10 MB) fica FORA do
+        // pré-cache para o app instalar/atualizar rápido; ele é cacheado sob
+        // demanda na 1ª foto (runtimeCaching abaixo).
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,wasm,traineddata,gz}'],
+        globIgnores: ['**/opencv/**'],
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
         navigateFallback: 'index.html',
-        // Assets pesados de CDN (OpenCV e Tesseract): cacheia após o 1º uso
-        // online para que scanner e OCR funcionem offline depois.
         runtimeCaching: [
           {
+            // OpenCV local: cacheia na 1ª foto -> offline e instantâneo depois
+            urlPattern: /\/opencv\/opencv\.js$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'opencv-local',
+              expiration: { maxEntries: 2, maxAgeSeconds: 60 * 60 * 24 * 180 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Assets do Tesseract (OCR) vindos de CDN: cacheia após o 1º uso
             urlPattern:
-              /^https:\/\/(docs\.opencv\.org|cdn\.jsdelivr\.net|unpkg\.com|tessdata\.projectnaptha\.com)\//,
+              /^https:\/\/(cdn\.jsdelivr\.net|unpkg\.com|tessdata\.projectnaptha\.com|docs\.opencv\.org)\//,
             handler: 'CacheFirst',
             options: {
               cacheName: 'cv-ocr-cdn',
