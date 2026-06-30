@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { addExpense } from '../db/repository'
 import { readReceipt } from '../lib/ocr'
 import { takePendingPhoto } from '../lib/pendingPhoto'
-import { parseBRL, todayISO } from '../lib/format'
+import { formatBRL, parseBRL, todayISO } from '../lib/format'
+import type { Confidence } from '../lib/ocr'
 import {
   CATEGORY_LABELS,
   type Category,
@@ -19,7 +20,8 @@ export default function NovaDespesa() {
   const [photoUrl, setPhotoUrl] = useState<string>()
   const [ocrState, setOcrState] = useState<'idle' | 'lendo' | 'ok'>('idle')
   const [ocrProgress, setOcrProgress] = useState(0)
-  const [amountRead, setAmountRead] = useState(false)
+  const [amountConf, setAmountConf] = useState<Confidence>('none')
+  const [candidates, setCandidates] = useState<number[]>([])
 
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(todayISO())
@@ -45,11 +47,11 @@ export default function NovaDespesa() {
     setOcrProgress(0)
     try {
       const guess = await readReceipt(file, setOcrProgress)
-      // Só preenche o valor quando há confiança (evita chutar número errado)
-      const filled = guess.amount != null && guess.amountConfidence === 'high'
-      if (filled) setAmount(guess.amount!.toFixed(2).replace('.', ','))
+      // Sempre pré-preenche o melhor palpite; os candidatos ficam como chips
+      if (guess.amount != null) setAmount(guess.amount.toFixed(2).replace('.', ','))
+      setCandidates(guess.candidates)
+      setAmountConf(guess.amountConfidence)
       if (guess.date) setDate(guess.date)
-      setAmountRead(filled)
       setOcrState('ok')
     } catch {
       setOcrState('idle')
@@ -112,14 +114,17 @@ export default function NovaDespesa() {
           Lendo comprovante… {Math.round(ocrProgress * 100)}%
         </p>
       )}
-      {ocrState === 'ok' && amountRead && (
-        <p className="mb-3 text-center text-sm text-emerald-400">
-          ✓ Confira os campos abaixo
-        </p>
-      )}
-      {ocrState === 'ok' && !amountRead && (
-        <p className="mb-3 text-center text-sm text-amber-400">
-          Não consegui ler o valor com certeza — confira/digite abaixo
+      {ocrState === 'ok' && (
+        <p
+          className={`mb-3 text-center text-sm ${
+            amountConf === 'high' ? 'text-emerald-400' : 'text-amber-400'
+          }`}
+        >
+          {amountConf === 'high'
+            ? '✓ Valor lido — confira abaixo'
+            : amountConf === 'none'
+              ? 'Não consegui ler o valor — digite abaixo'
+              : 'Confira o valor — toque num sugerido se precisar'}
         </p>
       )}
 
@@ -162,6 +167,31 @@ export default function NovaDespesa() {
           />
         </Field>
       </div>
+
+      {candidates.length > 0 && (amountConf !== 'high' || candidates.length > 1) && (
+        <div className="-mt-1 mb-3">
+          <div className="mb-1 text-xs text-slate-400">Valores encontrados (toque para usar)</div>
+          <div className="flex flex-wrap gap-2">
+            {candidates.map((c) => {
+              const str = c.toFixed(2).replace('.', ',')
+              const active = str === amount
+              return (
+                <button
+                  key={c}
+                  onClick={() => setAmount(str)}
+                  className={`rounded-full border px-3 py-1 text-sm ${
+                    active
+                      ? 'border-sky-500 bg-sky-500/20 text-sky-300'
+                      : 'border-slate-600 text-slate-200 active:bg-slate-800'
+                  }`}
+                >
+                  {formatBRL(c)}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <Field label="Categoria">
         <select
