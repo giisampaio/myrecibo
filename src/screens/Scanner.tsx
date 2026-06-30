@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { X, Flashlight, Image as ImageIcon, Keyboard, Check } from 'lucide-react'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 import { warmupScanner, whenScannerReady, detectDocument } from '../lib/scannerWorker'
 
@@ -184,7 +185,7 @@ export default function Scanner() {
             <p className="text-slate-200">
               Não foi possível abrir a câmera. Permita o acesso ou escolha uma foto da galeria.
             </p>
-            <label className="rounded-xl bg-sky-500 px-6 py-3 font-semibold text-white active:bg-sky-600">
+            <label className="rounded-xl bg-white px-6 py-3 font-medium text-black active:opacity-90">
               Escolher da galeria
               <input type="file" accept="image/*" className="hidden" onChange={onPickFromGallery} />
             </label>
@@ -220,12 +221,9 @@ export default function Scanner() {
             )}
 
             {result && !processing && (
-              <span
-                className={`absolute left-1/2 top-20 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-medium backdrop-blur ${
-                  result.cropped ? 'bg-emerald-500/25 text-emerald-200' : 'bg-slate-500/30 text-slate-200'
-                }`}
-              >
-                {result.cropped ? '✓ Bordas ajustadas' : 'Foto completa'}
+              <span className="absolute left-1/2 top-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white backdrop-blur">
+                {result.cropped && <Check size={14} />}
+                {result.cropped ? 'Bordas ajustadas' : 'Foto completa'}
               </span>
             )}
           </div>
@@ -239,20 +237,20 @@ export default function Scanner() {
             stopCamera()
             navigate('/despesas')
           }}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-xl text-white backdrop-blur"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur"
           aria-label="Fechar câmera"
         >
-          ✕
+          <X size={20} />
         </button>
         {mode === 'camera' && hasTorch && (
           <button
             onClick={toggleTorch}
-            className={`flex h-10 w-10 items-center justify-center rounded-full text-xl backdrop-blur ${
-              torchOn ? 'bg-amber-400 text-black' : 'bg-black/50 text-white'
+            className={`flex h-10 w-10 items-center justify-center rounded-full backdrop-blur ${
+              torchOn ? 'bg-white text-black' : 'bg-black/50 text-white'
             }`}
             aria-label="Lanterna"
           >
-            🔦
+            <Flashlight size={20} />
           </button>
         )}
       </div>
@@ -265,7 +263,8 @@ export default function Scanner() {
               Enquadre o comprovante e toque para fotografar
             </p>
             <div className="grid grid-cols-3 items-center px-8">
-              <label className="justify-self-start text-sm text-white/80">
+              <label className="flex flex-col items-center gap-1 justify-self-start text-[11px] text-white/80">
+                <ImageIcon size={22} />
                 Galeria
                 <input type="file" accept="image/*" className="hidden" onChange={onPickFromGallery} />
               </label>
@@ -282,8 +281,9 @@ export default function Scanner() {
                   stopCamera()
                   navigate('/nova')
                 }}
-                className="justify-self-end text-sm text-white/80"
+                className="flex flex-col items-center gap-1 justify-self-end text-[11px] text-white/80"
               >
+                <Keyboard size={22} />
                 Digitar
               </button>
             </div>
@@ -299,7 +299,7 @@ export default function Scanner() {
             <button
               onClick={onUse}
               disabled={!result || processing}
-              className="rounded-xl bg-sky-500 py-4 font-semibold text-white active:bg-sky-600 disabled:opacity-40"
+              className="rounded-xl bg-white py-4 font-medium text-black active:opacity-90 disabled:opacity-40"
             >
               Usar
             </button>

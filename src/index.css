@@ -1,7 +1,37 @@
 @import 'tailwindcss';
 
+/* ---------- Tema grafite (claro/escuro automático) ---------- */
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --text: #18181b;
+  --text-muted: #71717a;
+  --border: #e8e8eb;
+  --border-strong: #d4d4d8;
+  --ink: #18181b; /* accent grafite: botão de ação */
+  --ink-soft: #27272a;
+  --ink-contrast: #ffffff;
+  --danger: #b91c1c;
+  --radius: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0b0c;
+    --surface: #161618;
+    --surface-2: #1f1f23;
+    --text: #f4f4f5;
+    --text-muted: #a1a1aa;
+    --border: #27272a;
+    --border-strong: #3f3f46;
+    --ink: #fafafa;
+    --ink-soft: #e4e4e7;
+    --ink-contrast: #0b0b0c;
+    --danger: #f87171;
+  }
 }
 
 html,
@@ -12,34 +42,71 @@ body,
 
 body {
   margin: 0;
-  background-color: #0f172a;
-  color: #e2e8f0;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  /* Respeita as áreas seguras do iPhone (notch / barra inferior) */
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
     env(safe-area-inset-bottom) env(safe-area-inset-left);
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Evita zoom ao focar inputs no iOS (fonte >= 16px) */
 input,
 select,
 textarea,
 button {
-  font-size: 16px;
+  font-size: 16px; /* evita zoom no iOS */
+  font-family: inherit;
 }
 
-/* Campo de formulário padrão */
+/* ---------- Componentes base ---------- */
 .input {
   width: 100%;
-  border-radius: 0.75rem;
-  border: 1px solid #334155;
-  background-color: rgb(30 41 59 / 0.6);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
   padding: 0.75rem;
-  color: #f1f5f9;
+  color: var(--text);
   outline: none;
 }
-
 .input:focus {
-  border-color: #0ea5e9;
+  border-color: var(--border-strong);
+}
+
+.card {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.btn-primary {
+  width: 100%;
+  border-radius: var(--radius);
+  background-color: var(--ink);
+  color: var(--ink-contrast);
+  font-weight: 500;
+  padding: 0.95rem;
+  text-align: center;
+  transition: transform 0.08s ease, opacity 0.15s ease;
+}
+.btn-primary:active {
+  transform: scale(0.985);
+}
+.btn-primary:disabled {
+  opacity: 0.4;
+}
+
+.btn-ghost {
+  width: 100%;
+  border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-weight: 500;
+  padding: 0.95rem;
+  text-align: center;
+  transition: transform 0.08s ease;
+}
+.btn-ghost:active {
+  transform: scale(0.985);
 }

@@ -78,7 +78,7 @@ export default function ReciboManual() {
       source: 'recibo',
       receipt: { template, ...receiptMeta },
     })
-    navigate('/', { replace: true })
+    navigate('/despesas', { replace: true })
   }
 
   return (
@@ -89,12 +89,11 @@ export default function ReciboManual() {
             <button
               key={t.key}
               onClick={() => setTemplate(t.key)}
-              className={`flex flex-col items-center gap-1 rounded-xl border-2 p-2 ${
-                template === t.key ? 'border-sky-500' : 'border-slate-700'
-              }`}
+              className="flex flex-col items-center gap-1 rounded-xl border-2 p-2"
+              style={{ borderColor: template === t.key ? 'var(--ink)' : 'var(--border)' }}
             >
               <span className={`h-10 w-full rounded ${t.preview}`} />
-              <span className="text-xs text-slate-300">{t.label}</span>
+              <span className="text-xs text-[var(--text-muted)]">{t.label}</span>
             </button>
           ))}
         </div>
@@ -161,16 +160,10 @@ export default function ReciboManual() {
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <button
-          onClick={onDownload}
-          className="rounded-xl border border-slate-600 py-4 font-semibold text-slate-200 active:bg-slate-800"
-        >
+        <button onClick={onDownload} className="btn-ghost">
           Baixar PDF
         </button>
-        <button
-          onClick={onSave}
-          className="rounded-xl bg-sky-500 py-4 font-semibold text-white active:bg-sky-600"
-        >
+        <button onClick={onSave} className="btn-primary">
           Salvar despesa
         </button>
       </div>
@@ -181,7 +174,7 @@ export default function ReciboManual() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="mb-3 block">
-      <span className="mb-1 block text-xs font-medium text-slate-400">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-[var(--text-muted)]">{label}</span>
       {children}
     </label>
   )
