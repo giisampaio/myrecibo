@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import JScanify, { type Corner, type CornerPoints } from '../lib/jscanify'
-import { loadOpenCV } from '../lib/opencv'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 
-const DETECT_W = 1000 // largura de processamento da detecção
-const MIN_AREA_FRAC = 0.1
-const OPENCV_WAIT_MS = 12000
+const READY_WAIT_MS = 15000 // espera o OpenCV ficar pronto no worker
+const PROCESS_MS = 15000 // tempo máximo para detectar/recortar
 
 type Mode = 'camera' | 'review'
 
@@ -16,11 +13,23 @@ interface Result {
   cropped: boolean
 }
 
+interface WorkerResult {
+  found: boolean
+  buffer?: ArrayBuffer
+  width?: number
+  height?: number
+}
+
 export default function Scanner() {
   const navigate = useNavigate()
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const scannerRef = useRef<JScanify | null>(null)
+
+  // Worker do OpenCV (fora da thread principal — não trava a câmera)
+  const workerRef = useRef<Worker | null>(null)
+  const readyRef = useRef<Promise<void> | null>(null)
+  const pendingRef = useRef<{ id: number; resolve: (r: WorkerResult) => void } | null>(null)
+  const idRef = useRef(0)
 
   const [mode, setMode] = useState<Mode>('camera')
   const [cameraError, setCameraError] = useState(false)
@@ -34,9 +43,39 @@ export default function Scanner() {
 
   useEffect(() => {
     startCamera()
-    return () => stopCamera()
+    startWorker()
+    return () => {
+      stopCamera()
+      workerRef.current?.terminate()
+      workerRef.current = null
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  function startWorker() {
+    try {
+      const worker = new Worker('/scanner-worker.js')
+      workerRef.current = worker
+      readyRef.current = new Promise<void>((resolve) => {
+        worker.onmessage = (ev: MessageEvent) => {
+          const m = ev.data
+          if (m?.type === 'ready') {
+            resolve()
+          } else if (m?.type === 'result') {
+            const pending = pendingRef.current
+            if (pending && pending.id === m.id) {
+              pendingRef.current = null
+              pending.resolve({ found: m.found, buffer: m.buffer, width: m.width, height: m.height })
+            }
+          }
+        }
+      })
+      // Pré-carrega o OpenCV no worker já na abertura (não bloqueia a câmera)
+      readyRef.current.catch(() => {})
+    } catch {
+      workerRef.current = null
+    }
+  }
 
   async function startCamera() {
     try {
@@ -114,37 +153,44 @@ export default function Scanner() {
     void process(src)
   }
 
+  /** Envia a imagem ao worker e aguarda o recorte (ou desiste no timeout). */
+  function detectInWorker(src: HTMLCanvasElement): Promise<WorkerResult> {
+    const worker = workerRef.current
+    if (!worker) return Promise.resolve({ found: false })
+    const ctx = src.getContext('2d')
+    if (!ctx) return Promise.resolve({ found: false })
+    const imgData = ctx.getImageData(0, 0, src.width, src.height)
+    const id = ++idRef.current
+    return new Promise<WorkerResult>((resolve) => {
+      pendingRef.current = { id, resolve }
+      worker.postMessage(
+        { type: 'process', buffer: imgData.data.buffer, width: src.width, height: src.height, id },
+        [imgData.data.buffer],
+      )
+    })
+  }
+
   async function process(src: HTMLCanvasElement) {
     let resultCanvas: HTMLCanvasElement = src
     let cropped = false
 
-    try {
-      const cv = await withTimeout(loadOpenCV(), OPENCV_WAIT_MS)
-      const scanner = scannerRef.current ?? new JScanify()
-      scannerRef.current = scanner
-
-      const scale = Math.min(1, DETECT_W / src.width)
-      const small = downscale(src, scale)
-      const img = cv.imread(small)
+    if (workerRef.current && readyRef.current) {
       try {
-        const contour = scanner.findPaperContour(img)
-        if (contour) {
-          const c = scanner.getCornerPoints(contour)
-          if (isQuad(c) && quadArea(c) > MIN_AREA_FRAC * small.width * small.height) {
-            const corners = scaleCorners(c, src.width / small.width, src.height / small.height)
-            const { w, h } = quadSize(corners)
-            const out = scanner.extractPaper(src, Math.round(w), Math.round(h), corners)
-            if (out) {
-              resultCanvas = out
-              cropped = true
-            }
-          }
+        await withTimeout(readyRef.current, READY_WAIT_MS)
+        const res = await withTimeout(detectInWorker(src), PROCESS_MS)
+        if (res.found && res.buffer && res.width && res.height) {
+          const out = new ImageData(new Uint8ClampedArray(res.buffer), res.width, res.height)
+          const cc = document.createElement('canvas')
+          cc.width = res.width
+          cc.height = res.height
+          cc.getContext('2d')?.putImageData(out, 0, 0)
+          resultCanvas = cc
+          cropped = true
         }
-      } finally {
-        img.delete()
+      } catch {
+        /* timeout / sem OpenCV: mantém a foto inteira */
+        pendingRef.current = null
       }
-    } catch {
-      /* OpenCV indisponível: mantém a foto inteira */
     }
 
     const blob = await canvasToBlob(resultCanvas)
@@ -174,7 +220,6 @@ export default function Scanner() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
-      {/* Câmera ao vivo (fica montada para não reiniciar ao refazer) */}
       <div className="relative flex-1 overflow-hidden">
         <video
           ref={videoRef}
@@ -185,7 +230,6 @@ export default function Scanner() {
           onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
         />
 
-        {/* Moldura-guia */}
         {mode === 'camera' && !cameraError && (
           <div className="pointer-events-none absolute inset-6 rounded-2xl border-2 border-white/40" />
         )}
@@ -203,7 +247,6 @@ export default function Scanner() {
           </div>
         )}
 
-        {/* Revisão: foto + animação de recorte/zoom */}
         {mode === 'review' && (
           <div className="absolute inset-0 bg-black">
             {fullUrl && (
@@ -332,53 +375,8 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ])
 }
 
-function downscale(src: HTMLCanvasElement, scale: number): HTMLCanvasElement {
-  if (scale >= 1) return src
-  const c = document.createElement('canvas')
-  c.width = Math.round(src.width * scale)
-  c.height = Math.round(src.height * scale)
-  c.getContext('2d')?.drawImage(src, 0, 0, c.width, c.height)
-  return c
-}
-
 function canvasToBlob(c: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     c.toBlob((b) => (b ? resolve(b) : reject(new Error('blob'))), 'image/jpeg', 0.9)
   })
-}
-
-function isQuad(c: CornerPoints): c is Required<CornerPoints> {
-  return !!(c.topLeftCorner && c.topRightCorner && c.bottomLeftCorner && c.bottomRightCorner)
-}
-
-function quadArea(c: Required<CornerPoints>): number {
-  const p = [c.topLeftCorner, c.topRightCorner, c.bottomRightCorner, c.bottomLeftCorner]
-  let a = 0
-  for (let i = 0; i < 4; i++) {
-    const j = (i + 1) % 4
-    a += p[i].x * p[j].y - p[j].x * p[i].y
-  }
-  return Math.abs(a / 2)
-}
-
-function quadSize(c: Required<CornerPoints>): { w: number; h: number } {
-  const top = dist(c.topLeftCorner, c.topRightCorner)
-  const bottom = dist(c.bottomLeftCorner, c.bottomRightCorner)
-  const left = dist(c.topLeftCorner, c.bottomLeftCorner)
-  const right = dist(c.topRightCorner, c.bottomRightCorner)
-  return { w: Math.max(120, (top + bottom) / 2), h: Math.max(120, (left + right) / 2) }
-}
-
-function scaleCorners(c: Required<CornerPoints>, sx: number, sy: number): Required<CornerPoints> {
-  const s = (p: Corner): Corner => ({ x: p.x * sx, y: p.y * sy })
-  return {
-    topLeftCorner: s(c.topLeftCorner),
-    topRightCorner: s(c.topRightCorner),
-    bottomLeftCorner: s(c.bottomLeftCorner),
-    bottomRightCorner: s(c.bottomRightCorner),
-  }
-}
-
-function dist(p1: Corner, p2: Corner): number {
-  return Math.hypot(p1.x - p2.x, p1.y - p2.y)
 }
