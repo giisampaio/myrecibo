@@ -18,6 +18,7 @@ interface Result {
 export default function Scanner() {
   const navigate = useNavigate()
   const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
   const [mode, setMode] = useState<Mode>('camera')
@@ -37,6 +38,41 @@ export default function Scanner() {
     return () => stopCamera()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Exibe a câmera num canvas (sem o overlay nativo do <video>); ~30fps, object-cover.
+  useEffect(() => {
+    if (mode !== 'camera') return
+    let raf = 0
+    let last = 0
+    const draw = () => {
+      const v = videoRef.current
+      const c = canvasRef.current
+      if (v && c && v.videoWidth && v.readyState >= 2) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2)
+        const w = Math.round(c.clientWidth * dpr)
+        const h = Math.round(c.clientHeight * dpr)
+        if (w && h && (c.width !== w || c.height !== h)) {
+          c.width = w
+          c.height = h
+        }
+        const ctx = c.getContext('2d')
+        if (ctx && c.width && c.height) {
+          const s = Math.max(c.width / v.videoWidth, c.height / v.videoHeight)
+          const dw = v.videoWidth * s
+          const dh = v.videoHeight * s
+          ctx.drawImage(v, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh)
+        }
+      }
+    }
+    const loop = (t: number) => {
+      raf = requestAnimationFrame(loop)
+      if (t - last < 33) return
+      last = t
+      draw()
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [mode])
 
   async function startCamera() {
     try {
@@ -166,18 +202,26 @@ export default function Scanner() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="relative flex-1 overflow-hidden">
+        {/* Fonte oculta: o <video> alimenta o canvas (sem o overlay nativo do iOS) */}
         <video
           ref={videoRef}
-          className="h-full w-full object-cover"
           playsInline
           muted
           autoPlay
           onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            opacity: 0,
+            pointerEvents: 'none',
+          }}
         />
+        <canvas ref={canvasRef} className="relative block h-full w-full" />
 
-        {mode === 'camera' && !cameraError && (
-          <div className="pointer-events-none absolute inset-6 rounded-2xl border-2 border-white/40" />
-        )}
+        {mode === 'camera' && !cameraError && <CornerGuide />}
 
         {cameraError && mode === 'camera' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
@@ -221,57 +265,73 @@ export default function Scanner() {
             )}
 
             {result && !processing && (
-              <span className="absolute left-1/2 top-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white backdrop-blur">
+              <span className="absolute left-1/2 top-24 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white backdrop-blur">
                 {result.cropped && <Check size={14} />}
                 {result.cropped ? 'Bordas ajustadas' : 'Foto completa'}
               </span>
             )}
           </div>
         )}
+
+        {/* Scrims para legibilidade dos controles */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-28"
+          style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))' }}
+        />
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-48"
+          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0))' }}
+        />
       </div>
 
       {/* Barra superior */}
-      <div className="absolute inset-x-0 top-0 flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))]">
+      <div
+        className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pb-2"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 10px)' }}
+      >
         <button
           onClick={() => {
             stopCamera()
             navigate('/despesas')
           }}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur active:bg-black/70"
           aria-label="Fechar câmera"
         >
-          <X size={20} />
+          <X size={22} />
         </button>
         {mode === 'camera' && hasTorch && (
           <button
             onClick={toggleTorch}
-            className={`flex h-10 w-10 items-center justify-center rounded-full backdrop-blur ${
-              torchOn ? 'bg-white text-black' : 'bg-black/50 text-white'
+            className={`flex h-11 w-11 items-center justify-center rounded-full backdrop-blur active:opacity-80 ${
+              torchOn ? 'bg-white text-black' : 'bg-black/45 text-white'
             }`}
             aria-label="Lanterna"
           >
-            <Flashlight size={20} />
+            <Flashlight size={22} />
           </button>
         )}
       </div>
 
       {/* Controles inferiores */}
-      <div className="absolute inset-x-0 bottom-0 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6">
+      <div
+        className="absolute inset-x-0 bottom-0 pt-6"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 18px)' }}
+      >
         {mode === 'camera' ? (
           <>
-            <p className="mb-4 text-center text-sm text-white/90 drop-shadow">
+            <p className="mb-5 text-center text-sm text-white/90 drop-shadow">
               Enquadre o comprovante e toque para fotografar
             </p>
-            <div className="grid grid-cols-3 items-center px-8">
-              <label className="flex flex-col items-center gap-1 justify-self-start text-[11px] text-white/80">
-                <ImageIcon size={22} />
+            <div className="grid grid-cols-3 items-center px-10">
+              <label className="press flex flex-col items-center gap-1 justify-self-start text-[11px] text-white/80">
+                <ImageIcon size={24} />
                 Galeria
                 <input type="file" accept="image/*" className="hidden" onChange={onPickFromGallery} />
               </label>
               <button
                 onClick={capturePhoto}
                 disabled={cameraError}
-                className="h-20 w-20 justify-self-center rounded-full border-4 border-white bg-white/30 p-1 active:bg-white/50 disabled:opacity-40"
+                className="h-[76px] w-[76px] justify-self-center rounded-full border-4 border-white bg-white/25 p-1 active:bg-white/50 disabled:opacity-40"
                 aria-label="Tirar foto"
               >
                 <span className="block h-full w-full rounded-full bg-white" />
@@ -281,9 +341,9 @@ export default function Scanner() {
                   stopCamera()
                   navigate('/nova')
                 }}
-                className="flex flex-col items-center gap-1 justify-self-end text-[11px] text-white/80"
+                className="press flex flex-col items-center gap-1 justify-self-end text-[11px] text-white/80"
               >
-                <Keyboard size={22} />
+                <Keyboard size={24} />
                 Digitar
               </button>
             </div>
@@ -292,7 +352,7 @@ export default function Scanner() {
           <div className="grid grid-cols-2 gap-3 px-8">
             <button
               onClick={onRetake}
-              className="rounded-xl border border-white/40 py-4 font-semibold text-white active:bg-white/10"
+              className="rounded-xl border border-white/40 py-4 font-medium text-white active:bg-white/10"
             >
               Refazer
             </button>
@@ -306,6 +366,18 @@ export default function Scanner() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function CornerGuide() {
+  const base = 'absolute h-7 w-7 border-white/70'
+  return (
+    <div className="pointer-events-none absolute inset-8">
+      <span className={`${base} left-0 top-0 rounded-tl-xl border-l-2 border-t-2`} />
+      <span className={`${base} right-0 top-0 rounded-tr-xl border-r-2 border-t-2`} />
+      <span className={`${base} bottom-0 left-0 rounded-bl-xl border-b-2 border-l-2`} />
+      <span className={`${base} bottom-0 right-0 rounded-br-xl border-b-2 border-r-2`} />
     </div>
   )
 }
