@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { setPendingPhoto } from '../lib/pendingPhoto'
+import { warmupScanner, whenScannerReady, detectDocument } from '../lib/scannerWorker'
 
 const READY_WAIT_MS = 15000 // espera o OpenCV ficar pronto no worker
 const PROCESS_MS = 15000 // tempo máximo para detectar/recortar
@@ -13,23 +14,10 @@ interface Result {
   cropped: boolean
 }
 
-interface WorkerResult {
-  found: boolean
-  buffer?: ArrayBuffer
-  width?: number
-  height?: number
-}
-
 export default function Scanner() {
   const navigate = useNavigate()
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-
-  // Worker do OpenCV (fora da thread principal — não trava a câmera)
-  const workerRef = useRef<Worker | null>(null)
-  const readyRef = useRef<Promise<void> | null>(null)
-  const pendingRef = useRef<{ id: number; resolve: (r: WorkerResult) => void } | null>(null)
-  const idRef = useRef(0)
 
   const [mode, setMode] = useState<Mode>('camera')
   const [cameraError, setCameraError] = useState(false)
@@ -43,39 +31,11 @@ export default function Scanner() {
 
   useEffect(() => {
     startCamera()
-    startWorker()
-    return () => {
-      stopCamera()
-      workerRef.current?.terminate()
-      workerRef.current = null
-    }
+    // Pré-carrega o OpenCV no worker (persistente) já na abertura da câmera
+    warmupScanner()
+    return () => stopCamera()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  function startWorker() {
-    try {
-      const worker = new Worker('/scanner-worker.js')
-      workerRef.current = worker
-      readyRef.current = new Promise<void>((resolve) => {
-        worker.onmessage = (ev: MessageEvent) => {
-          const m = ev.data
-          if (m?.type === 'ready') {
-            resolve()
-          } else if (m?.type === 'result') {
-            const pending = pendingRef.current
-            if (pending && pending.id === m.id) {
-              pendingRef.current = null
-              pending.resolve({ found: m.found, buffer: m.buffer, width: m.width, height: m.height })
-            }
-          }
-        }
-      })
-      // Pré-carrega o OpenCV no worker já na abertura (não bloqueia a câmera)
-      readyRef.current.catch(() => {})
-    } catch {
-      workerRef.current = null
-    }
-  }
 
   async function startCamera() {
     try {
@@ -153,31 +113,16 @@ export default function Scanner() {
     void process(src)
   }
 
-  /** Envia a imagem ao worker e aguarda o recorte (ou desiste no timeout). */
-  function detectInWorker(src: HTMLCanvasElement): Promise<WorkerResult> {
-    const worker = workerRef.current
-    if (!worker) return Promise.resolve({ found: false })
-    const ctx = src.getContext('2d')
-    if (!ctx) return Promise.resolve({ found: false })
-    const imgData = ctx.getImageData(0, 0, src.width, src.height)
-    const id = ++idRef.current
-    return new Promise<WorkerResult>((resolve) => {
-      pendingRef.current = { id, resolve }
-      worker.postMessage(
-        { type: 'process', buffer: imgData.data.buffer, width: src.width, height: src.height, id },
-        [imgData.data.buffer],
-      )
-    })
-  }
-
   async function process(src: HTMLCanvasElement) {
     let resultCanvas: HTMLCanvasElement = src
     let cropped = false
 
-    if (workerRef.current && readyRef.current) {
+    const ctx = src.getContext('2d')
+    if (ctx) {
       try {
-        await withTimeout(readyRef.current, READY_WAIT_MS)
-        const res = await withTimeout(detectInWorker(src), PROCESS_MS)
+        await withTimeout(whenScannerReady(), READY_WAIT_MS)
+        const imgData = ctx.getImageData(0, 0, src.width, src.height)
+        const res = await withTimeout(detectDocument(imgData, src.width, src.height), PROCESS_MS)
         if (res.found && res.buffer && res.width && res.height) {
           const out = new ImageData(new Uint8ClampedArray(res.buffer), res.width, res.height)
           const cc = document.createElement('canvas')
@@ -189,7 +134,6 @@ export default function Scanner() {
         }
       } catch {
         /* timeout / sem OpenCV: mantém a foto inteira */
-        pendingRef.current = null
       }
     }
 
