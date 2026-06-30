@@ -9,8 +9,10 @@ declare global {
   }
 }
 
+// Hospedado no próprio servidor (mesma origem, rápido e cacheável offline).
 const LOCAL_URL = `${import.meta.env.BASE_URL}opencv/opencv.js`
-const CDN_URL = 'https://docs.opencv.org/4.10.0/opencv.js'
+// Fallback caso o arquivo local falte (URL válida do docs.opencv.org).
+const CDN_URL = 'https://docs.opencv.org/4.x/opencv.js'
 
 let promise: Promise<any> | null = null
 
@@ -51,7 +53,7 @@ export function loadOpenCV(): Promise<any> {
     const start = Date.now()
     const poll = () => {
       if (window.cv && window.cv.Mat) return resolve(window.cv)
-      if (Date.now() - start > 45000) return reject(new Error('OpenCV demorou demais para carregar'))
+      if (Date.now() - start > 60000) return reject(new Error('OpenCV demorou demais para carregar'))
       setTimeout(poll, 150)
     }
     setTimeout(poll, 800)
