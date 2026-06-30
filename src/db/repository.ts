@@ -1,11 +1,5 @@
 import { db } from './db'
-import type {
-  Category,
-  Expense,
-  GeneratedReceipt,
-  PaymentType,
-  ExpenseSource,
-} from '../types'
+import type { Category, Expense, PaymentType, ExpenseSource } from '../types'
 
 function uuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -28,7 +22,6 @@ export interface NewExpenseInput {
   description: string
   source: ExpenseSource
   photo?: Blob
-  receipt?: GeneratedReceipt
 }
 
 export async function addExpense(input: NewExpenseInput): Promise<string> {
@@ -45,7 +38,6 @@ export async function addExpense(input: NewExpenseInput): Promise<string> {
     source: input.source,
     reimbursement: input.paymentType === 'pessoal' ? 'pendente' : 'na',
     photo: input.photo,
-    receipt: input.receipt,
     sync: 'local',
     createdAt: now,
     updatedAt: now,

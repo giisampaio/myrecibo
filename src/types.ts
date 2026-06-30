@@ -38,8 +38,6 @@ export interface Expense {
   photo?: Blob
   /** Caminho no Supabase Storage depois de sincronizar */
   photoPath?: string
-  /** Dados do recibo manual gerado (quando source = 'recibo') */
-  receipt?: GeneratedReceipt
   sync: SyncStatus
   createdAt: string
   updatedAt: string
@@ -47,17 +45,24 @@ export interface Expense {
   deleted?: boolean
 }
 
-export interface GeneratedReceipt {
-  template: ReceiptTemplate
-  payerName: string
-  payerDoc: string
-  issuerName: string
-  issuerDoc: string
-  city: string
-  refersTo: string
-}
+export type ReceiptTemplate =
+  | 'classico'
+  | 'moderno'
+  | 'minimalista'
+  | 'elegante'
+  | 'termico-amarelo'
+  | 'termico-branco'
+  | 'nota'
+  | 'comanda'
+  | 'itens-moderno'
+  | 'itens-colorido'
 
-export type ReceiptTemplate = 'classico' | 'moderno' | 'minimalista'
+/** Item lançado manualmente no recibo (não é persistido) */
+export interface ReceiptItem {
+  description: string
+  qty: number
+  unitPrice: number
+}
 
 export const CATEGORY_LABELS: Record<Category, string> = {
   alimentacao: 'Alimentação',

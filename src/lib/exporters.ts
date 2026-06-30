@@ -6,7 +6,6 @@ import {
   type Expense,
 } from '../types'
 import { formatBRL, formatDateBR } from './format'
-import { drawReceiptPage } from './receipt'
 
 function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -66,13 +65,8 @@ export async function exportReceiptsPDF(expenses: Expense[], monthLabel: string)
   y -= 18
   cover.drawText(`Total: ${formatBRL(total)}`, { x: 400, y, size: 12, font: fontBold })
 
-  // Uma página por comprovante
+  // Uma página por comprovante (foto ou recibo rasterizado)
   for (const e of expenses) {
-    // Recibo manual gerado: desenha a página a partir dos dados
-    if (!e.photo && e.source === 'recibo' && e.receipt) {
-      await drawReceiptPage(pdf, { ...e.receipt, amount: e.amount, date: e.date }, font, fontBold)
-      continue
-    }
     if (!e.photo) continue
     const bytes = new Uint8Array(await e.photo.arrayBuffer())
     let img
