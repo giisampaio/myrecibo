@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import jscanify from 'jscanify/client'
-import type { Corner, CornerPoints } from 'jscanify/client'
+import JScanify, { type Corner, type CornerPoints } from '../lib/jscanify'
 import { loadOpenCV } from '../lib/opencv'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 
@@ -17,7 +16,7 @@ export default function Scanner() {
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const procRef = useRef<HTMLCanvasElement>(document.createElement('canvas'))
   const streamRef = useRef<MediaStream | null>(null)
-  const scannerRef = useRef<jscanify | null>(null)
+  const scannerRef = useRef<JScanify | null>(null)
   const cvRef = useRef<any>(null)
   const rafRef = useRef<number | undefined>(undefined)
   const lastTickRef = useRef(0)
@@ -43,7 +42,7 @@ export default function Scanner() {
     loadOpenCV()
       .then((cv) => {
         cvRef.current = cv
-        scannerRef.current = new jscanify()
+        scannerRef.current = new JScanify()
         setCvEnabled(true)
       })
       .catch(() => setCvEnabled(false))
