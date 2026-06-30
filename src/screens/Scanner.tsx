@@ -5,8 +5,9 @@ import { loadOpenCV } from '../lib/opencv'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 
 const PROC_W = 480
-const STABLE_MS = 700
-const STABLE_PX = 6
+const STABLE_MS = 650
+const STABLE_PX = 12
+const MIN_AREA_FRAC = 0.08
 
 type Phase = 'init' | 'searching' | 'detected' | 'denied' | 'error'
 
@@ -24,9 +25,13 @@ export default function Scanner() {
   const stableSinceRef = useRef<number | null>(null)
   const capturedRef = useRef(false)
   const phaseRef = useRef<Phase>('init')
+  const detectErrRef = useRef(false)
 
   const [phase, setPhaseState] = useState<Phase>('init')
   const [cvEnabled, setCvEnabled] = useState(false)
+  const [cvStatus, setCvStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [cvError, setCvError] = useState('')
+  const [detectMsg, setDetectMsg] = useState('')
   const [hasTorch, setHasTorch] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
 
@@ -44,8 +49,13 @@ export default function Scanner() {
         cvRef.current = cv
         scannerRef.current = new JScanify()
         setCvEnabled(true)
+        setCvStatus('ready')
       })
-      .catch(() => setCvEnabled(false))
+      .catch((e) => {
+        setCvEnabled(false)
+        setCvStatus('error')
+        setCvError(e?.message ? String(e.message) : String(e))
+      })
     return () => stopCamera()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -120,7 +130,7 @@ export default function Scanner() {
       const contour = scanner.findPaperContour(img)
       if (contour) {
         const c = scanner.getCornerPoints(contour)
-        if (isQuad(c) && quadArea(c) > 0.12 * PROC_W * ph) {
+        if (isQuad(c) && quadArea(c) > MIN_AREA_FRAC * PROC_W * ph) {
           const corners = c as Required<CornerPoints>
           drawQuad(octx, corners, dispW / PROC_W, dispH / ph, stableProgress())
           updateStability(corners)
@@ -128,8 +138,11 @@ export default function Scanner() {
           return
         }
       }
-    } catch {
-      /* frame inválido — ignora */
+    } catch (e) {
+      if (!detectErrRef.current) {
+        detectErrRef.current = true
+        setDetectMsg(e instanceof Error ? e.message : String(e))
+      }
     } finally {
       try {
         img?.delete()
@@ -242,6 +255,31 @@ export default function Scanner() {
           autoPlay
         />
         <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+
+        {/* Selo de status da detecção de bordas (diagnóstico) */}
+        <div className="absolute inset-x-0 top-16 flex flex-col items-center gap-1 px-4 text-center">
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-medium backdrop-blur ${
+              cvStatus === 'ready'
+                ? 'bg-emerald-500/25 text-emerald-200'
+                : cvStatus === 'error'
+                  ? 'bg-red-500/25 text-red-200'
+                  : 'bg-amber-500/25 text-amber-100'
+            }`}
+          >
+            {cvStatus === 'ready'
+              ? '● Detecção de bordas ativa'
+              : cvStatus === 'error'
+                ? '● Detecção indisponível — foto normal'
+                : '○ Carregando detecção de bordas…'}
+          </span>
+          {cvStatus === 'error' && cvError && (
+            <span className="max-w-[80%] text-[10px] text-red-200/80">{cvError}</span>
+          )}
+          {cvStatus === 'ready' && detectMsg && (
+            <span className="max-w-[80%] text-[10px] text-amber-200/80">⚠ {detectMsg}</span>
+          )}
+        </div>
 
         {phase === 'denied' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
