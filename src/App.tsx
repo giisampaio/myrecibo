@@ -5,6 +5,7 @@ import NovaDespesa from './screens/NovaDespesa'
 import ExpenseDetail from './screens/ExpenseDetail'
 import ReciboManual from './screens/ReciboManual'
 import Relatorio from './screens/Relatorio'
+import Perfil from './screens/Perfil'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
       <Route path="/despesa/:id" element={<ExpenseDetail />} />
       <Route path="/recibo" element={<ReciboManual />} />
       <Route path="/relatorio" element={<Relatorio />} />
+      <Route path="/perfil" element={<Perfil />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

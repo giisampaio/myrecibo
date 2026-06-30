@@ -1,5 +1,11 @@
 import { db } from './db'
-import type { Category, Expense, PaymentType, ExpenseSource } from '../types'
+import type {
+  Category,
+  Expense,
+  PaymentType,
+  ExpenseSource,
+  ReimbursementStatus,
+} from '../types'
 
 function uuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -59,6 +65,16 @@ export async function softDeleteExpense(id: string): Promise<void> {
     sync: 'local',
     updatedAt: new Date().toISOString(),
   })
+}
+
+export async function setReimbursement(
+  ids: string[],
+  status: ReimbursementStatus,
+): Promise<void> {
+  const now = new Date().toISOString()
+  await db.expenses.bulkUpdate(
+    ids.map((id) => ({ key: id, changes: { reimbursement: status, sync: 'local', updatedAt: now } })),
+  )
 }
 
 export function monthRange(year: number, month0: number): [string, string] {

@@ -5,7 +5,13 @@ import { ChevronLeft, ChevronRight, Plus, Camera, PenLine, Receipt } from 'lucid
 import { db } from '../db/db'
 import { monthRange } from '../db/repository'
 import { formatBRL, formatDateBR } from '../lib/format'
-import { CATEGORY_LABELS, PAYMENT_LABELS, type Expense } from '../types'
+import {
+  CATEGORY_LABELS,
+  PAYMENT_LABELS,
+  REIMBURSEMENT_LABELS,
+  type Expense,
+  type ReimbursementStatus,
+} from '../types'
 import AppShell from '../components/AppShell'
 
 export default function Home() {
@@ -115,8 +121,31 @@ function ExpenseRow({ expense: e }: { expense: Expense }) {
               : `${formatDateBR(e.date)} · ${PAYMENT_LABELS[e.paymentType]}`}
           </div>
         </div>
-        <div className="text-right font-medium">{formatBRL(e.amount)}</div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className="font-medium">{formatBRL(e.amount)}</span>
+          {e.paymentType === 'pessoal' && e.reimbursement !== 'na' && (
+            <ReimbBadge status={e.reimbursement} />
+          )}
+        </div>
       </Link>
     </li>
+  )
+}
+
+const REIMB_COLOR: Record<ReimbursementStatus, string> = {
+  na: '',
+  pendente: '#b45309',
+  solicitado: '#1d4ed8',
+  pago: '#15803d',
+}
+
+function ReimbBadge({ status }: { status: ReimbursementStatus }) {
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+      style={{ backgroundColor: `${REIMB_COLOR[status]}1a`, color: REIMB_COLOR[status] }}
+    >
+      {REIMBURSEMENT_LABELS[status]}
+    </span>
   )
 }

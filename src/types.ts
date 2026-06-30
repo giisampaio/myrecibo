@@ -78,3 +78,10 @@ export const PAYMENT_LABELS: Record<PaymentType, string> = {
   corporativo: 'Corporativo',
   pessoal: 'Pessoal',
 }
+
+export const REIMBURSEMENT_LABELS: Record<ReimbursementStatus, string> = {
+  na: '—',
+  pendente: 'A reembolsar',
+  solicitado: 'Solicitado',
+  pago: 'Reembolsado',
+}

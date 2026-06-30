@@ -5,7 +5,13 @@ import { Building2, User, Trash2, X } from 'lucide-react'
 import { db } from '../db/db'
 import { updateExpense, softDeleteExpense } from '../db/repository'
 import { parseBRL, todayISO } from '../lib/format'
-import { CATEGORY_LABELS, type Category, type PaymentType } from '../types'
+import {
+  CATEGORY_LABELS,
+  REIMBURSEMENT_LABELS,
+  type Category,
+  type PaymentType,
+  type ReimbursementStatus,
+} from '../types'
 import AppShell from '../components/AppShell'
 
 export default function ExpenseDetail() {
@@ -19,6 +25,7 @@ export default function ExpenseDetail() {
   const [date, setDate] = useState(todayISO())
   const [vendor, setVendor] = useState('')
   const [description, setDescription] = useState('')
+  const [reimbursement, setReimbursement] = useState<ReimbursementStatus>('na')
   const [photoUrl, setPhotoUrl] = useState<string>()
   const [lightbox, setLightbox] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -32,6 +39,7 @@ export default function ExpenseDetail() {
     setDate(expense.date)
     setVendor(expense.vendor)
     setDescription(expense.description)
+    setReimbursement(expense.reimbursement)
     if (expense.photo) {
       const url = URL.createObjectURL(expense.photo)
       setPhotoUrl(url)
@@ -45,12 +53,8 @@ export default function ExpenseDetail() {
     const value = parseBRL(amount)
     if (value <= 0) return alert('Informe um valor válido.')
     setSaving(true)
-    const reimbursement =
-      paymentType === 'pessoal'
-        ? expense.reimbursement === 'na'
-          ? 'pendente'
-          : expense.reimbursement
-        : 'na'
+    const reimb: ReimbursementStatus =
+      paymentType === 'pessoal' ? (reimbursement === 'na' ? 'pendente' : reimbursement) : 'na'
     await updateExpense(id, {
       amount: value,
       paymentType,
@@ -58,7 +62,7 @@ export default function ExpenseDetail() {
       date,
       vendor: vendor.trim(),
       description: description.trim(),
-      reimbursement,
+      reimbursement: reimb,
     })
     navigate('/despesas', { replace: true })
   }
@@ -114,6 +118,30 @@ export default function ExpenseDetail() {
           />
         </div>
       </Field>
+
+      {paymentType === 'pessoal' && (
+        <Field label="Status do reembolso">
+          <div className="grid grid-cols-3 gap-2">
+            {(['pendente', 'solicitado', 'pago'] as ReimbursementStatus[]).map((s) => {
+              const active = (reimbursement === 'na' ? 'pendente' : reimbursement) === s
+              return (
+                <button
+                  key={s}
+                  onClick={() => setReimbursement(s)}
+                  className="press rounded-xl border py-2.5 text-xs font-medium transition-colors"
+                  style={{
+                    borderColor: active ? 'var(--ink)' : 'var(--border)',
+                    backgroundColor: active ? 'var(--surface-2)' : 'var(--surface)',
+                    color: 'var(--text)',
+                  }}
+                >
+                  {REIMBURSEMENT_LABELS[s]}
+                </button>
+              )
+            })}
+          </div>
+        </Field>
+      )}
 
       <Field label="Categoria">
         <select value={category} onChange={(e) => setCategory(e.target.value as Category)} className="input">
