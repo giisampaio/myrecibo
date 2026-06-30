@@ -73,6 +73,9 @@ export default function Home() {
         )}
       </ul>
 
+      {/* Espaço para a última despesa não ficar atrás do botão flutuante */}
+      <div aria-hidden className="h-16" />
+
       <Link
         to="/"
         className="press fixed bottom-20 right-4 z-20 flex items-center gap-2 rounded-full bg-[var(--ink)] px-5 py-4 font-medium text-[var(--ink-contrast)] shadow-lg"
@@ -96,19 +99,24 @@ function Stat({ label, value }: { label: string; value: number }) {
 function ExpenseRow({ expense: e }: { expense: Expense }) {
   const Icon = e.photo ? Camera : e.source === 'recibo' ? PenLine : Receipt
   return (
-    <li className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)]">
-        <Icon size={18} className="text-[var(--text-muted)]" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{e.vendor || CATEGORY_LABELS[e.category]}</div>
-        <div className="truncate text-xs text-[var(--text-muted)]">
-          {e.vendor
-            ? `${formatDateBR(e.date)} · ${CATEGORY_LABELS[e.category]} · ${PAYMENT_LABELS[e.paymentType]}`
-            : `${formatDateBR(e.date)} · ${PAYMENT_LABELS[e.paymentType]}`}
+    <li>
+      <Link
+        to={`/despesa/${e.id}`}
+        className="press flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)]">
+          <Icon size={18} className="text-[var(--text-muted)]" />
         </div>
-      </div>
-      <div className="text-right font-medium">{formatBRL(e.amount)}</div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium">{e.vendor || CATEGORY_LABELS[e.category]}</div>
+          <div className="truncate text-xs text-[var(--text-muted)]">
+            {e.vendor
+              ? `${formatDateBR(e.date)} · ${CATEGORY_LABELS[e.category]} · ${PAYMENT_LABELS[e.paymentType]}`
+              : `${formatDateBR(e.date)} · ${PAYMENT_LABELS[e.paymentType]}`}
+          </div>
+        </div>
+        <div className="text-right font-medium">{formatBRL(e.amount)}</div>
+      </Link>
     </li>
   )
 }

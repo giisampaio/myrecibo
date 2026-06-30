@@ -282,6 +282,11 @@ export default function Scanner() {
           className="pointer-events-none absolute inset-x-0 bottom-0 h-48"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0))' }}
         />
+        {/* Faixa sólida atrás da barra de status (camera não invade o relógio/bateria) */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 bg-black"
+          style={{ height: 'env(safe-area-inset-top)' }}
+        />
       </div>
 
       {/* Barra superior */}

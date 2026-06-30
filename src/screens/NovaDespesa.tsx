@@ -58,6 +58,7 @@ export default function NovaDespesa() {
   const [advanced, setAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [lightbox, setLightbox] = useState(false)
 
   const steps = useMemo<Step[]>(
     () => (skipCategory ? ['valor', 'pagamento'] : ['valor', 'categoria', 'pagamento']),
@@ -176,7 +177,7 @@ export default function NovaDespesa() {
                 reading={reading}
                 cents={cents}
                 candidates={candidates}
-                onPick={() => navigate('/')}
+                onPick={() => (photoUrl ? setLightbox(true) : navigate('/'))}
                 onDigit={pushDigit}
                 onBackspace={popDigit}
                 onSetCents={setCents}
@@ -225,6 +226,29 @@ export default function NovaDespesa() {
           >
             <Check size={40} />
           </motion.div>
+        </div>
+      )}
+
+      {lightbox && photoUrl && (
+        <div className="absolute inset-0 z-30 flex flex-col bg-black">
+          <div className="flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+            <button
+              onClick={() => setLightbox(false)}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white"
+              aria-label="Fechar"
+            >
+              <X size={22} />
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="press flex h-11 items-center rounded-full bg-white/15 px-4 text-sm font-medium text-white"
+            >
+              Trocar foto
+            </button>
+          </div>
+          <div className="flex flex-1 items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <img src={photoUrl} alt="Comprovante" className="max-h-full max-w-full rounded-lg object-contain" />
+          </div>
         </div>
       )}
     </div>
