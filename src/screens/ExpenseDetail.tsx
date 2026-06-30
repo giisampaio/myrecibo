@@ -125,14 +125,13 @@ export default function ExpenseDetail() {
         </select>
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Data">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
-        </Field>
-        <Field label="Estabelecimento">
-          <input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Opcional" className="input" />
-        </Field>
-      </div>
+      <Field label="Data">
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
+      </Field>
+
+      <Field label="Estabelecimento">
+        <input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Opcional" className="input" />
+      </Field>
 
       <Field label="Observação">
         <input

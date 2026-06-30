@@ -264,14 +264,12 @@ export default function ReciboManual() {
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Data">
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
-              </Field>
-              <Field label="Cidade">
-                <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" className="input" />
-              </Field>
-            </div>
+            <Field label="Data">
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
+            </Field>
+            <Field label="Cidade">
+              <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" className="input" />
+            </Field>
             <Field label="CPF/CNPJ do emitente">
               <input value={issuerDoc} onChange={(e) => setIssuerDoc(e.target.value)} placeholder="Opcional" className="input" />
             </Field>
