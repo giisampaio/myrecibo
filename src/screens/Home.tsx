@@ -74,7 +74,7 @@ export default function Home() {
       </ul>
 
       <Link
-        to="/nova"
+        to="/"
         className="press fixed bottom-20 right-4 z-20 flex items-center gap-2 rounded-full bg-[var(--ink)] px-5 py-4 font-medium text-[var(--ink-contrast)] shadow-lg"
       >
         <Plus size={20} />
@@ -102,8 +102,10 @@ function ExpenseRow({ expense: e }: { expense: Expense }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium">{e.vendor || CATEGORY_LABELS[e.category]}</div>
-        <div className="text-xs text-[var(--text-muted)]">
-          {formatDateBR(e.date)} · {CATEGORY_LABELS[e.category]} · {PAYMENT_LABELS[e.paymentType]}
+        <div className="truncate text-xs text-[var(--text-muted)]">
+          {e.vendor
+            ? `${formatDateBR(e.date)} · ${CATEGORY_LABELS[e.category]} · ${PAYMENT_LABELS[e.paymentType]}`
+            : `${formatDateBR(e.date)} · ${PAYMENT_LABELS[e.paymentType]}`}
         </div>
       </div>
       <div className="text-right font-medium">{formatBRL(e.amount)}</div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, Flashlight, Image as ImageIcon, Keyboard, Check } from 'lucide-react'
+import { X, Flashlight, Image as ImageIcon, Keyboard, Check, Camera } from 'lucide-react'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 import { warmupScanner, whenScannerReady, detectDocument } from '../lib/scannerWorker'
 
@@ -181,8 +181,8 @@ export default function Scanner() {
 
         {cameraError && mode === 'camera' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
-            <span className="text-5xl">📷</span>
-            <p className="text-slate-200">
+            <Camera size={44} className="text-white/70" />
+            <p className="text-white/80">
               Não foi possível abrir a câmera. Permita o acesso ou escolha uma foto da galeria.
             </p>
             <label className="rounded-xl bg-white px-6 py-3 font-medium text-black active:opacity-90">

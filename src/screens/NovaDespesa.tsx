@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import {
@@ -42,7 +42,6 @@ const MAX_CENTS = 9_999_999_99 // até R$ 99.999.999,99
 
 export default function NovaDespesa() {
   const navigate = useNavigate()
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const [photo, setPhoto] = useState<Blob | undefined>()
   const [photoUrl, setPhotoUrl] = useState<string>()
@@ -92,11 +91,6 @@ export default function NovaDespesa() {
     } finally {
       setReading(false)
     }
-  }
-
-  function onPickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (file) processPhoto(file)
   }
 
   function go(to: number) {
@@ -182,7 +176,7 @@ export default function NovaDespesa() {
                 reading={reading}
                 cents={cents}
                 candidates={candidates}
-                onPick={() => fileRef.current?.click()}
+                onPick={() => navigate('/')}
                 onDigit={pushDigit}
                 onBackspace={popDigit}
                 onSetCents={setCents}
@@ -233,15 +227,6 @@ export default function NovaDespesa() {
           </motion.div>
         </div>
       )}
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={onPickPhoto}
-      />
     </div>
   )
 }
