@@ -29,11 +29,14 @@ Para sincronizar com o Supabase, copie `.env.example` para `.env` e preencha
 
 ## O que já funciona
 
-- ✅ **Scanner como tela inicial** (`/`): abre a câmera ao iniciar, detecta as bordas do
-  comprovante (OpenCV.js + jscanify), **captura sozinho** ao estabilizar e corrige a
-  perspectiva. Botão **✕** fecha a câmera; **Galeria** e **Digitar** como alternativas.
+- ✅ **Scanner como tela inicial** (`/`): abre a câmera ao iniciar; você **toca para
+  fotografar** e um **Web Worker** com OpenCV.js recorta e corrige a perspectiva do
+  comprovante (animação de zoom/fade), com **Refazer/Usar**. Se não detectar as bordas, usa
+  a foto inteira. Botão **✕** fecha a câmera; **Galeria** e **Digitar** como alternativas.
 - ✅ Tela de despesas do mês com totais separados (Corporativo × Pessoal/reembolso)
-- ✅ Nova despesa com foto + OCR (valor/data) + categoria + forma de pagamento
+- ✅ Nova despesa com foto + OCR on-device (Tesseract). O **valor** só é preenchido quando
+  vem de uma linha de TOTAL confiável (senão fica em branco para digitar); a **data** é
+  validada por faixa. Categoria e forma de pagamento manuais.
 - ✅ Recibo manual com 3 modelos (Clássico / Moderno / Minimalista), com valor por extenso
 - ✅ Relatório: PDF dos comprovantes (resumo + 1 página por foto/recibo) e planilha .xlsx
 - ✅ Armazenamento offline (IndexedDB)

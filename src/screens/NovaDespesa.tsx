@@ -19,6 +19,7 @@ export default function NovaDespesa() {
   const [photoUrl, setPhotoUrl] = useState<string>()
   const [ocrState, setOcrState] = useState<'idle' | 'lendo' | 'ok'>('idle')
   const [ocrProgress, setOcrProgress] = useState(0)
+  const [amountRead, setAmountRead] = useState(false)
 
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(todayISO())
@@ -44,8 +45,11 @@ export default function NovaDespesa() {
     setOcrProgress(0)
     try {
       const guess = await readReceipt(file, setOcrProgress)
-      if (guess.amount) setAmount(guess.amount.toFixed(2).replace('.', ','))
+      // Só preenche o valor quando há confiança (evita chutar número errado)
+      const filled = guess.amount != null && guess.amountConfidence === 'high'
+      if (filled) setAmount(guess.amount!.toFixed(2).replace('.', ','))
       if (guess.date) setDate(guess.date)
+      setAmountRead(filled)
       setOcrState('ok')
     } catch {
       setOcrState('idle')
@@ -108,9 +112,14 @@ export default function NovaDespesa() {
           Lendo comprovante… {Math.round(ocrProgress * 100)}%
         </p>
       )}
-      {ocrState === 'ok' && (
+      {ocrState === 'ok' && amountRead && (
         <p className="mb-3 text-center text-sm text-emerald-400">
           ✓ Confira os campos abaixo
+        </p>
+      )}
+      {ocrState === 'ok' && !amountRead && (
+        <p className="mb-3 text-center text-sm text-amber-400">
+          Não consegui ler o valor com certeza — confira/digite abaixo
         </p>
       )}
 
