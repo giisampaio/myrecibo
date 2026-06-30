@@ -1,3 +1,5 @@
+import type { Category } from '../types'
+
 export type Confidence = 'high' | 'medium' | 'low' | 'none'
 
 export interface OcrGuess {
@@ -6,6 +8,8 @@ export interface OcrGuess {
   /** valores distintos mais prováveis (para a UI oferecer como chips) */
   candidates: number[]
   date?: string // yyyy-mm-dd
+  /** categoria detectada pelo texto (null = não identificou) */
+  category: Category | null
   rawText: string
 }
 
@@ -66,8 +70,44 @@ export async function readReceipt(
     amountConfidence: amount.confidence,
     candidates: amount.candidates,
     date: guessDate(text),
+    category: guessCategory(text),
     rawText: text,
   }
+}
+
+/* ---------- categoria por palavras-chave ---------- */
+
+const CATEGORY_KEYWORDS: { cat: Category; re: RegExp }[] = [
+  {
+    cat: 'transporte',
+    re: /\b(uber|99\s?pop|99\s?app|t[aá]xi|taxi|posto|combust|gasolina|etanol|[aá]lcool|diesel|estacionamento|ped[aá]gio|passagem|locadora|loca[çc][aã]o|transporte)\b/i,
+  },
+  {
+    cat: 'hospedagem',
+    re: /\b(hotel|pousada|hospedagem|di[aá]ria|hostel|airbnb|resort|flat|motel)\b/i,
+  },
+  {
+    cat: 'comissaria',
+    re: /\b(comissaria|comiss[aá]ria|catering|bordo|tripula)\b/i,
+  },
+  {
+    cat: 'impressao',
+    re: /\b(impress|gr[aá]fica|c[oó]pia|copia|xerox|papelaria|plotagem)\b/i,
+  },
+  {
+    cat: 'peca',
+    re: /\b(pe[çc]a|auto.?pe[çc]a|parafuso|ferramenta|manuten[çc]|oficina|mec[aâ]nic)\b/i,
+  },
+  {
+    cat: 'alimentacao',
+    re: /\b(restaurante|lanchonete|lanche|padaria|pizza|burger|hamburg|food|churrasc|espetinho|a[çc]ougue|carne|merc(ado|earia)|superm|caf[eé]|bebida|refei[çc]|bar|bistr[oô]|sushi)\b/i,
+  },
+]
+
+/** Detecta a categoria pelo texto do comprovante; null se não identificar. */
+export function guessCategory(text: string): Category | null {
+  for (const { cat, re } of CATEGORY_KEYWORDS) if (re.test(text)) return cat
+  return null
 }
 
 function flattenLines(data: any): OcrLine[] {

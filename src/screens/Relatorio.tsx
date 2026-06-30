@@ -58,11 +58,11 @@ export default function Relatorio() {
   return (
     <AppShell title="Relatório">
       <div className="mb-5 flex items-center justify-between">
-        <button onClick={() => shift(-1)} className="p-1 text-[var(--text-muted)]" aria-label="Mês anterior">
+        <button onClick={() => shift(-1)} className="icon-btn -ml-2.5" aria-label="Mês anterior">
           <ChevronLeft size={20} />
         </button>
         <span className="font-medium capitalize">{monthLabel}</span>
-        <button onClick={() => shift(1)} className="p-1 text-[var(--text-muted)]" aria-label="Próximo mês">
+        <button onClick={() => shift(1)} className="icon-btn -mr-2.5" aria-label="Próximo mês">
           <ChevronRight size={20} />
         </button>
       </div>

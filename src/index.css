@@ -16,6 +16,12 @@
   --ink-contrast: #ffffff;
   --danger: #b91c1c;
   --radius: 12px;
+
+  /* Grid de 8pt + Apple HIG (tokens, não números avulsos) */
+  --tap: 44px; /* alvo de toque mínimo (HIG) */
+  --screen-x: 16px; /* margem lateral padrão das telas */
+  --header-h: 56px; /* altura do cabeçalho */
+  --control-h: 52px; /* altura de botões/inputs principais */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -62,10 +68,11 @@ button {
 /* ---------- Componentes base ---------- */
 .input {
   width: 100%;
+  min-height: 48px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background-color: var(--surface);
-  padding: 0.75rem;
+  padding: 0 0.875rem;
   color: var(--text);
   outline: none;
 }
@@ -79,34 +86,45 @@ button {
   border-radius: var(--radius);
 }
 
-.btn-primary {
+/* Botão de ação: altura padrão (HIG ≥ 44px) */
+.btn-primary,
+.btn-ghost {
+  display: flex;
   width: 100%;
+  min-height: var(--control-h);
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border-radius: var(--radius);
-  background-color: var(--ink);
-  color: var(--ink-contrast);
   font-weight: 500;
-  padding: 0.95rem;
-  text-align: center;
+  padding: 0 1rem;
   transition: transform 0.08s ease, opacity 0.15s ease;
 }
-.btn-primary:active {
-  transform: scale(0.985);
+.btn-primary {
+  background-color: var(--ink);
+  color: var(--ink-contrast);
+  border: 1px solid var(--ink);
 }
-.btn-primary:disabled {
-  opacity: 0.4;
-}
-
 .btn-ghost {
-  width: 100%;
-  border-radius: var(--radius);
   background: transparent;
   border: 1px solid var(--border-strong);
   color: var(--text);
-  font-weight: 500;
-  padding: 0.95rem;
-  text-align: center;
-  transition: transform 0.08s ease;
 }
+.btn-primary:active,
 .btn-ghost:active {
   transform: scale(0.985);
+}
+.btn-primary:disabled,
+.btn-ghost:disabled {
+  opacity: 0.4;
+}
+
+/* Botão só-ícone: área de toque mínima (HIG 44px) */
+.icon-btn {
+  display: flex;
+  height: var(--tap);
+  width: var(--tap);
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
 }

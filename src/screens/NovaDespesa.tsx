@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -8,6 +8,7 @@ import {
   Building2,
   User,
   ChevronDown,
+  Delete,
   Utensils,
   BedDouble,
   ShoppingBag,
@@ -21,11 +22,10 @@ import {
 import { addExpense } from '../db/repository'
 import { readReceipt } from '../lib/ocr'
 import { takePendingPhoto } from '../lib/pendingPhoto'
-import { formatBRL, parseBRL, todayISO, formatDateBR } from '../lib/format'
-import { type Category, type PaymentType } from '../types'
+import { formatBRL, formatCentsBR, todayISO, formatDateBR } from '../lib/format'
+import { CATEGORY_LABELS, type Category, type PaymentType } from '../types'
 
-const STEPS = ['valor', 'categoria', 'pagamento'] as const
-type Step = (typeof STEPS)[number]
+type Step = 'valor' | 'categoria' | 'pagamento'
 
 const CATEGORIES: { key: Category; label: string; Icon: LucideIcon }[] = [
   { key: 'alimentacao', label: 'Alimentação', Icon: Utensils },
@@ -37,6 +37,8 @@ const CATEGORIES: { key: Category; label: string; Icon: LucideIcon }[] = [
   { key: 'outros', label: 'Outros', Icon: MoreHorizontal },
 ]
 
+const MAX_CENTS = 9_999_999_99 // até R$ 99.999.999,99
+
 export default function NovaDespesa() {
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -46,18 +48,23 @@ export default function NovaDespesa() {
   const [reading, setReading] = useState(false)
   const [candidates, setCandidates] = useState<number[]>([])
 
-  const [amount, setAmount] = useState('')
+  const [cents, setCents] = useState(0)
   const [date, setDate] = useState(todayISO())
   const [paymentType, setPaymentType] = useState<PaymentType | null>(null)
   const [category, setCategory] = useState<Category | null>(null)
+  const [skipCategory, setSkipCategory] = useState(false)
   const [vendor, setVendor] = useState('')
   const [description, setDescription] = useState('')
   const [advanced, setAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  const steps = useMemo<Step[]>(
+    () => (skipCategory ? ['valor', 'pagamento'] : ['valor', 'categoria', 'pagamento']),
+    [skipCategory],
+  )
   const [stepIdx, setStepIdx] = useState(0)
   const [dir, setDir] = useState(1)
-  const step: Step = STEPS[stepIdx]
+  const step = steps[Math.min(stepIdx, steps.length - 1)]
 
   useEffect(() => {
     const scanned = takePendingPhoto()
@@ -71,9 +78,13 @@ export default function NovaDespesa() {
     setReading(true)
     try {
       const guess = await readReceipt(file)
-      if (guess.amount != null) setAmount(guess.amount.toFixed(2).replace('.', ','))
+      if (guess.amount != null) setCents(Math.round(guess.amount * 100))
       setCandidates(guess.candidates)
       if (guess.date) setDate(guess.date)
+      if (guess.category) {
+        setCategory(guess.category) // identificou: pula o passo de categoria
+        setSkipCategory(true)
+      }
     } catch {
       /* OCR opcional */
     } finally {
@@ -90,19 +101,24 @@ export default function NovaDespesa() {
     setDir(to > stepIdx ? 1 : -1)
     setStepIdx(to)
   }
-
   function onBack() {
     if (stepIdx === 0) navigate(-1)
     else go(stepIdx - 1)
   }
 
+  function pushDigit(d: number) {
+    setCents((c) => Math.min(c * 10 + d, MAX_CENTS))
+  }
+  function popDigit() {
+    setCents((c) => Math.floor(c / 10))
+  }
+
   async function onSave() {
-    const value = parseBRL(amount)
-    if (value <= 0 || !category || !paymentType) return
+    if (cents <= 0 || !category || !paymentType) return
     setSaving(true)
     await addExpense({
       date,
-      amount: value,
+      amount: cents / 100,
       paymentType,
       category,
       vendor: vendor.trim(),
@@ -121,13 +137,15 @@ export default function NovaDespesa() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[var(--bg)] text-[var(--text)]">
-      {/* Cabeçalho */}
-      <header className="flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2">
-        <button onClick={onBack} className="-ml-1 p-2 text-[var(--text-muted)]" aria-label="Voltar">
+      <header
+        className="flex items-center justify-between px-[var(--screen-x)] pt-[max(0px,env(safe-area-inset-top))]"
+        style={{ minHeight: 'var(--header-h)' }}
+      >
+        <button onClick={onBack} className="icon-btn -ml-2.5" aria-label="Voltar">
           {stepIdx === 0 ? <X size={22} /> : <ArrowLeft size={22} />}
         </button>
         <div className="flex items-center gap-1.5">
-          {STEPS.map((s, i) => (
+          {steps.map((s, i) => (
             <span
               key={s}
               className="h-1.5 rounded-full transition-all duration-300"
@@ -138,10 +156,9 @@ export default function NovaDespesa() {
             />
           ))}
         </div>
-        <span className="w-8" />
+        <span className="w-[var(--tap)]" />
       </header>
 
-      {/* Conteúdo dos passos */}
       <div className="relative flex-1 overflow-hidden">
         <AnimatePresence custom={dir} mode="wait" initial={false}>
           <motion.div
@@ -152,16 +169,18 @@ export default function NovaDespesa() {
             animate="center"
             exit="exit"
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="absolute inset-0 flex flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+            className="absolute inset-0 flex flex-col px-[var(--screen-x)] pb-[max(16px,env(safe-area-inset-bottom))] pt-2"
           >
             {step === 'valor' && (
               <StepValor
                 photoUrl={photoUrl}
                 reading={reading}
-                amount={amount}
-                setAmount={setAmount}
+                cents={cents}
                 candidates={candidates}
                 onPick={() => fileRef.current?.click()}
+                onDigit={pushDigit}
+                onBackspace={popDigit}
+                onSetCents={setCents}
                 onNext={() => go(1)}
               />
             )}
@@ -170,7 +189,7 @@ export default function NovaDespesa() {
                 selected={category}
                 onSelect={(c) => {
                   setCategory(c)
-                  go(2)
+                  go(stepIdx + 1)
                 }}
               />
             )}
@@ -178,6 +197,8 @@ export default function NovaDespesa() {
               <StepPagamento
                 paymentType={paymentType}
                 setPaymentType={setPaymentType}
+                category={category}
+                setCategory={setCategory}
                 advanced={advanced}
                 setAdvanced={setAdvanced}
                 date={date}
@@ -206,23 +227,27 @@ export default function NovaDespesa() {
   )
 }
 
-/* ---------- Passo 1: valor ---------- */
+/* ---------- Passo 1: valor (teclado próprio + máscara) ---------- */
 
 function StepValor({
   photoUrl,
   reading,
-  amount,
-  setAmount,
+  cents,
   candidates,
   onPick,
+  onDigit,
+  onBackspace,
+  onSetCents,
   onNext,
 }: {
   photoUrl?: string
   reading: boolean
-  amount: string
-  setAmount: (v: string) => void
+  cents: number
   candidates: number[]
   onPick: () => void
+  onDigit: (d: number) => void
+  onBackspace: () => void
+  onSetCents: (c: number) => void
   onNext: () => void
 }) {
   return (
@@ -230,42 +255,35 @@ function StepValor({
       <div className="flex flex-1 flex-col items-center justify-center">
         <button
           onClick={onPick}
-          className="mb-6 flex h-20 w-24 items-center justify-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)]"
+          className="mb-5 flex h-16 w-20 items-center justify-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)]"
           aria-label="Trocar foto"
         >
           {photoUrl ? (
             <img src={photoUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <ImageIcon size={26} className="text-[var(--text-muted)]" />
+            <ImageIcon size={24} className="text-[var(--text-muted)]" />
           )}
         </button>
 
-        <p className="mb-1 text-sm text-[var(--text-muted)]">
+        <p className="mb-2 text-sm text-[var(--text-muted)]">
           {reading ? 'Lendo o comprovante…' : 'Confirme o valor'}
         </p>
 
-        <div className="flex items-baseline gap-1">
+        <div className="flex items-baseline gap-1.5">
           <span className="text-2xl font-medium text-[var(--text-muted)]">R$</span>
-          <input
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0,00"
-            autoFocus={!reading && !amount}
-            className="w-[5.5ch] bg-transparent text-center text-5xl font-medium tracking-tight text-[var(--text)] outline-none placeholder:text-[var(--border-strong)]"
-            style={{ width: `${Math.max(4, amount.length + 1)}ch` }}
-          />
+          <span className="text-5xl font-medium tabular-nums tracking-tight">
+            {formatCentsBR(cents)}
+          </span>
         </div>
 
         {candidates.length > 1 && (
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
             {candidates.map((c) => {
-              const str = c.toFixed(2).replace('.', ',')
-              const active = str === amount
+              const active = Math.round(c * 100) === cents
               return (
                 <button
                   key={c}
-                  onClick={() => setAmount(str)}
+                  onClick={() => onSetCents(Math.round(c * 100))}
                   className="rounded-full border px-3 py-1.5 text-sm transition-colors"
                   style={{
                     borderColor: active ? 'var(--ink)' : 'var(--border)',
@@ -281,10 +299,49 @@ function StepValor({
         )}
       </div>
 
-      <button onClick={onNext} disabled={parseBRL(amount) <= 0} className="btn-primary">
+      <Keypad onDigit={onDigit} onBackspace={onBackspace} />
+
+      <button onClick={onNext} disabled={cents <= 0} className="btn-primary mt-4">
         Continuar
       </button>
     </>
+  )
+}
+
+function Keypad({ onDigit, onBackspace }: { onDigit: (d: number) => void; onBackspace: () => void }) {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => (
+        <KeyBtn key={k} onClick={() => onDigit(k)}>
+          {k}
+        </KeyBtn>
+      ))}
+      <span />
+      <KeyBtn onClick={() => onDigit(0)}>0</KeyBtn>
+      <KeyBtn onClick={onBackspace} aria-label="Apagar">
+        <Delete size={22} />
+      </KeyBtn>
+    </div>
+  )
+}
+
+function KeyBtn({
+  children,
+  onClick,
+  'aria-label': ariaLabel,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  'aria-label'?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className="flex h-12 items-center justify-center rounded-xl text-xl font-medium text-[var(--text)] active:bg-[var(--surface-2)]"
+    >
+      {children}
+    </button>
   )
 }
 
@@ -299,7 +356,7 @@ function StepCategoria({
 }) {
   return (
     <>
-      <p className="mb-5 mt-2 text-center text-base font-medium">Qual a categoria?</p>
+      <p className="mb-6 mt-2 text-center text-base font-medium">Qual a categoria?</p>
       <div className="grid grid-cols-2 gap-3">
         {CATEGORIES.map(({ key, label, Icon }) => {
           const active = selected === key
@@ -307,13 +364,13 @@ function StepCategoria({
             <button
               key={key}
               onClick={() => onSelect(key)}
-              className="flex flex-col items-center gap-2 rounded-xl border p-5 transition-colors"
+              className="flex h-24 flex-col items-center justify-center gap-2 rounded-xl border transition-colors"
               style={{
                 borderColor: active ? 'var(--ink)' : 'var(--border)',
                 backgroundColor: active ? 'var(--surface-2)' : 'var(--surface)',
               }}
             >
-              <Icon size={26} className="text-[var(--text)]" />
+              <Icon size={24} className="text-[var(--text)]" />
               <span className="text-sm text-[var(--text)]">{label}</span>
             </button>
           )
@@ -328,6 +385,8 @@ function StepCategoria({
 function StepPagamento({
   paymentType,
   setPaymentType,
+  category,
+  setCategory,
   advanced,
   setAdvanced,
   date,
@@ -341,6 +400,8 @@ function StepPagamento({
 }: {
   paymentType: PaymentType | null
   setPaymentType: (p: PaymentType) => void
+  category: Category | null
+  setCategory: (c: Category) => void
   advanced: boolean
   setAdvanced: (v: boolean) => void
   date: string
@@ -354,8 +415,8 @@ function StepPagamento({
 }) {
   return (
     <>
-      <div className="flex-1">
-        <p className="mb-5 mt-2 text-center text-base font-medium">Como você pagou?</p>
+      <div className="flex-1 overflow-y-auto">
+        <p className="mb-6 mt-2 text-center text-base font-medium">Como você pagou?</p>
 
         <div className="grid grid-cols-2 gap-3">
           <PayCard
@@ -372,14 +433,13 @@ function StepPagamento({
           />
         </div>
 
-        {/* Avançado (raro): data, estabelecimento, observação */}
         <button
           onClick={() => setAdvanced(!advanced)}
-          className="mt-4 flex w-full items-center justify-between rounded-xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-muted)]"
+          className="mt-3 flex w-full items-center justify-between rounded-xl border border-[var(--border)] px-4 py-3.5 text-sm text-[var(--text-muted)]"
         >
           <span>Avançado</span>
           <span className="flex items-center gap-2 text-xs">
-            {!advanced && formatDateBR(date)}
+            {!advanced && (category ? CATEGORY_LABELS[category] : formatDateBR(date))}
             <ChevronDown
               size={16}
               className="transition-transform"
@@ -398,35 +458,45 @@ function StepPagamento({
               className="overflow-hidden"
             >
               <div className="space-y-3 pt-3">
-                <label className="block">
-                  <span className="mb-1 block text-xs text-[var(--text-muted)]">Data</span>
+                <Field label="Categoria">
+                  <select
+                    value={category ?? 'outros'}
+                    onChange={(e) => setCategory(e.target.value as Category)}
+                    className="input"
+                  >
+                    {Object.entries(CATEGORY_LABELS).map(([k, label]) => (
+                      <option key={k} value={k}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Data">
                   <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs text-[var(--text-muted)]">Estabelecimento</span>
+                </Field>
+                <Field label="Estabelecimento">
                   <input
                     value={vendor}
                     onChange={(e) => setVendor(e.target.value)}
                     placeholder="Restaurante do aeroporto"
                     className="input"
                   />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs text-[var(--text-muted)]">Observação</span>
+                </Field>
+                <Field label="Observação">
                   <input
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Detalhe da despesa"
                     className="input"
                   />
-                </label>
+                </Field>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      <button onClick={onSave} disabled={!paymentType || saving} className="btn-primary">
+      <button onClick={onSave} disabled={!paymentType || saving} className="btn-primary mt-4">
         {saving ? 'Salvando…' : 'Salvar despesa'}
       </button>
     </>
@@ -447,7 +517,7 @@ function PayCard({
   return (
     <button
       onClick={onClick}
-      className="relative flex flex-col items-center gap-2 rounded-xl border p-6 transition-colors"
+      className="relative flex h-24 flex-col items-center justify-center gap-2 rounded-xl border transition-colors"
       style={{
         borderColor: active ? 'var(--ink)' : 'var(--border)',
         backgroundColor: active ? 'var(--surface-2)' : 'var(--surface)',
@@ -458,8 +528,17 @@ function PayCard({
           <Check size={16} />
         </span>
       )}
-      <Icon size={28} className="text-[var(--text)]" />
+      <Icon size={26} className="text-[var(--text)]" />
       <span className="text-sm font-medium text-[var(--text)]">{label}</span>
     </button>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs text-[var(--text-muted)]">{label}</span>
+      {children}
+    </label>
   )
 }

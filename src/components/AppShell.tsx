@@ -13,21 +13,20 @@ export default function AppShell({ title, children, back, action }: Props) {
   const navigate = useNavigate()
   return (
     <div className="flex min-h-full flex-col bg-[var(--bg)] text-[var(--text)]">
-      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg)]/90 px-4 py-3 backdrop-blur">
+      <header
+        className="sticky top-0 z-10 flex items-center gap-1 border-b border-[var(--border)] bg-[var(--bg)]/90 px-[var(--screen-x)] backdrop-blur"
+        style={{ minHeight: 'var(--header-h)' }}
+      >
         {back && (
-          <button
-            onClick={() => navigate(-1)}
-            className="-ml-2 flex items-center text-[var(--text-muted)]"
-            aria-label="Voltar"
-          >
+          <button onClick={() => navigate(-1)} className="icon-btn -ml-2.5" aria-label="Voltar">
             <ChevronLeft size={22} />
           </button>
         )}
-        <h1 className="flex-1 text-lg font-medium">{title}</h1>
+        <h1 className="flex-1 text-xl font-medium">{title}</h1>
         {action}
       </header>
 
-      <main className="flex-1 px-4 pb-24 pt-4">{children}</main>
+      <main className="flex-1 px-[var(--screen-x)] pb-24 pt-4">{children}</main>
 
       <nav className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-[var(--border)] bg-[var(--bg)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
         <Tab to="/" label="Escanear" Icon={ScanLine} />

@@ -1,3 +1,11 @@
+/** Formata um valor em centavos como "1.100,00" (sem símbolo). */
+export function formatCentsBR(cents: number): string {
+  return (cents / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
 export function formatBRL(value: number): string {
   return value.toLocaleString('pt-BR', {
     style: 'currency',
