@@ -4,58 +4,42 @@ import JScanify, { type Corner, type CornerPoints } from '../lib/jscanify'
 import { loadOpenCV } from '../lib/opencv'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 
-const PROC_W = 480
-const STABLE_MS = 650
-const STABLE_PX = 12
-const MIN_AREA_FRAC = 0.08
+const DETECT_W = 1000 // largura de processamento da detecção
+const MIN_AREA_FRAC = 0.1
+const OPENCV_WAIT_MS = 12000
 
-type Phase = 'init' | 'searching' | 'detected' | 'denied' | 'error'
+type Mode = 'camera' | 'review'
+
+interface Result {
+  blob: Blob
+  url: string
+  cropped: boolean
+}
 
 export default function Scanner() {
   const navigate = useNavigate()
   const videoRef = useRef<HTMLVideoElement>(null)
-  const overlayRef = useRef<HTMLCanvasElement>(null)
-  const procRef = useRef<HTMLCanvasElement>(document.createElement('canvas'))
   const streamRef = useRef<MediaStream | null>(null)
   const scannerRef = useRef<JScanify | null>(null)
-  const cvRef = useRef<any>(null)
-  const rafRef = useRef<number | undefined>(undefined)
-  const lastTickRef = useRef(0)
-  const lastCornersRef = useRef<Required<CornerPoints> | null>(null)
-  const stableSinceRef = useRef<number | null>(null)
-  const capturedRef = useRef(false)
-  const phaseRef = useRef<Phase>('init')
-  const detectErrRef = useRef(false)
 
-  const [phase, setPhaseState] = useState<Phase>('init')
-  const [cvEnabled, setCvEnabled] = useState(false)
-  const [cvStatus, setCvStatus] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [cvError, setCvError] = useState('')
-  const [detectMsg, setDetectMsg] = useState('')
+  const [mode, setMode] = useState<Mode>('camera')
+  const [cameraError, setCameraError] = useState(false)
   const [hasTorch, setHasTorch] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
 
-  function setPhase(p: Phase) {
-    if (phaseRef.current !== p) {
-      phaseRef.current = p
-      setPhaseState(p)
-    }
-  }
+  const [fullUrl, setFullUrl] = useState('')
+  const [result, setResult] = useState<Result | null>(null)
+  const [processing, setProcessing] = useState(false)
+  const [animateIn, setAnimateIn] = useState(false)
 
   useEffect(() => {
     startCamera()
+    // Pré-carrega o OpenCV em segundo plano para já estar pronto na hora da foto
     loadOpenCV()
       .then((cv) => {
-        cvRef.current = cv
-        scannerRef.current = new JScanify()
-        setCvEnabled(true)
-        setCvStatus('ready')
+        if (cv) scannerRef.current = new JScanify()
       })
-      .catch((e) => {
-        setCvEnabled(false)
-        setCvStatus('error')
-        setCvError(e?.message ? String(e.message) : String(e))
-      })
+      .catch(() => {})
     return () => stopCamera()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -78,147 +62,20 @@ export default function Scanner() {
       const track = stream.getVideoTracks()[0]
       const caps = (track.getCapabilities?.() ?? {}) as { torch?: boolean }
       if (caps.torch) setHasTorch(true)
-      setPhase('searching')
-      lastTickRef.current = 0
-      rafRef.current = requestAnimationFrame(loop)
     } catch {
-      setPhase('denied')
+      setCameraError(true)
     }
   }
 
   function stopCamera() {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
-  }
-
-  function loop(ts: number) {
-    if (capturedRef.current) return
-    if (ts - lastTickRef.current >= 90) {
-      lastTickRef.current = ts
-      detect()
-    }
-    rafRef.current = requestAnimationFrame(loop)
-  }
-
-  function detect() {
-    const v = videoRef.current
-    const overlay = overlayRef.current
-    if (!v || !overlay || v.readyState < 2 || !v.videoWidth) return
-
-    const dispW = v.clientWidth
-    const dispH = v.clientHeight
-    if (overlay.width !== dispW) overlay.width = dispW
-    if (overlay.height !== dispH) overlay.height = dispH
-    const octx = overlay.getContext('2d')
-    if (!octx) return
-    octx.clearRect(0, 0, dispW, dispH)
-
-    const cv = cvRef.current
-    const scanner = scannerRef.current
-    if (!cv || !scanner) return
-
-    const ph = Math.round((v.videoHeight * PROC_W) / v.videoWidth)
-    const proc = procRef.current
-    proc.width = PROC_W
-    proc.height = ph
-    proc.getContext('2d')?.drawImage(v, 0, 0, PROC_W, ph)
-
-    let img: any
-    try {
-      img = cv.imread(proc)
-      const contour = scanner.findPaperContour(img)
-      if (contour) {
-        const c = scanner.getCornerPoints(contour)
-        if (isQuad(c) && quadArea(c) > MIN_AREA_FRAC * PROC_W * ph) {
-          const corners = c as Required<CornerPoints>
-          drawQuad(octx, corners, dispW / PROC_W, dispH / ph, stableProgress())
-          updateStability(corners)
-          setPhase('detected')
-          return
-        }
-      }
-    } catch (e) {
-      if (!detectErrRef.current) {
-        detectErrRef.current = true
-        setDetectMsg(e instanceof Error ? e.message : String(e))
-      }
-    } finally {
-      try {
-        img?.delete()
-      } catch {
-        /* noop */
-      }
-    }
-
-    stableSinceRef.current = null
-    lastCornersRef.current = null
-    setPhase('searching')
-  }
-
-  function stableProgress(): number {
-    if (!stableSinceRef.current) return 0
-    return Math.min(1, (performance.now() - stableSinceRef.current) / STABLE_MS)
-  }
-
-  function updateStability(corners: Required<CornerPoints>) {
-    const prev = lastCornersRef.current
-    lastCornersRef.current = corners
-    if (prev && maxCornerShift(prev, corners) < STABLE_PX) {
-      if (!stableSinceRef.current) stableSinceRef.current = performance.now()
-      else if (performance.now() - stableSinceRef.current >= STABLE_MS) {
-        capture(corners)
-      }
-    } else {
-      stableSinceRef.current = performance.now()
-    }
-  }
-
-  function capture(cornersProc: Required<CornerPoints> | null) {
-    if (capturedRef.current) return
-    const v = videoRef.current
-    if (!v || !v.videoWidth) return
-    capturedRef.current = true
-
-    const full = document.createElement('canvas')
-    full.width = v.videoWidth
-    full.height = v.videoHeight
-    full.getContext('2d')?.drawImage(v, 0, 0)
-
-    let out: HTMLCanvasElement | null = null
-    const scanner = scannerRef.current
-    if (scanner && cornersProc) {
-      const sx = v.videoWidth / procRef.current.width
-      const sy = v.videoHeight / procRef.current.height
-      const corners = scaleCorners(cornersProc, sx, sy)
-      const { w, h } = quadSize(corners)
-      try {
-        out = scanner.extractPaper(full, Math.max(120, Math.round(w)), Math.max(120, Math.round(h)), corners)
-      } catch {
-        out = null
-      }
-    }
-    const result = out ?? full
-    result.toBlob(
-      (blob) => {
-        if (!blob) {
-          capturedRef.current = false
-          return
-        }
-        setPendingPhoto(blob)
-        stopCamera()
-        navigate('/nova')
-      },
-      'image/jpeg',
-      0.9,
-    )
   }
 
   async function toggleTorch() {
     const track = streamRef.current?.getVideoTracks()[0]
     if (!track) return
     try {
-      // `torch` ainda não está nos tipos padrão do TS
       const constraints = { advanced: [{ torch: !torchOn }] } as unknown as MediaTrackConstraints
       await track.applyConstraints(constraints)
       setTorchOn((t) => !t)
@@ -227,71 +84,162 @@ export default function Scanner() {
     }
   }
 
+  /* ---------- captura ---------- */
+
+  function capturePhoto() {
+    const v = videoRef.current
+    if (!v || !v.videoWidth) return
+    const c = document.createElement('canvas')
+    c.width = v.videoWidth
+    c.height = v.videoHeight
+    c.getContext('2d')?.drawImage(v, 0, 0)
+    beginReview(c)
+  }
+
   function onPickFromGallery(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setPendingPhoto(file)
+    const img = new Image()
+    img.onload = () => {
+      const c = document.createElement('canvas')
+      c.width = img.naturalWidth
+      c.height = img.naturalHeight
+      c.getContext('2d')?.drawImage(img, 0, 0)
+      URL.revokeObjectURL(img.src)
+      beginReview(c)
+    }
+    img.src = URL.createObjectURL(file)
+  }
+
+  function beginReview(src: HTMLCanvasElement) {
+    setAnimateIn(false)
+    setResult(null)
+    setFullUrl(src.toDataURL('image/jpeg', 0.9))
+    setProcessing(true)
+    setMode('review')
+    void process(src)
+  }
+
+  async function process(src: HTMLCanvasElement) {
+    let resultCanvas: HTMLCanvasElement = src
+    let cropped = false
+
+    try {
+      const cv = await withTimeout(loadOpenCV(), OPENCV_WAIT_MS)
+      const scanner = scannerRef.current ?? new JScanify()
+      scannerRef.current = scanner
+
+      const scale = Math.min(1, DETECT_W / src.width)
+      const small = downscale(src, scale)
+      const img = cv.imread(small)
+      try {
+        const contour = scanner.findPaperContour(img)
+        if (contour) {
+          const c = scanner.getCornerPoints(contour)
+          if (isQuad(c) && quadArea(c) > MIN_AREA_FRAC * small.width * small.height) {
+            const corners = scaleCorners(c, src.width / small.width, src.height / small.height)
+            const { w, h } = quadSize(corners)
+            const out = scanner.extractPaper(src, Math.round(w), Math.round(h), corners)
+            if (out) {
+              resultCanvas = out
+              cropped = true
+            }
+          }
+        }
+      } finally {
+        img.delete()
+      }
+    } catch {
+      /* OpenCV indisponível: mantém a foto inteira */
+    }
+
+    const blob = await canvasToBlob(resultCanvas)
+    setResult({ blob, url: URL.createObjectURL(blob), cropped })
+    setProcessing(false)
+    requestAnimationFrame(() => requestAnimationFrame(() => setAnimateIn(true)))
+  }
+
+  /* ---------- ações da revisão ---------- */
+
+  function onUse() {
+    if (!result) return
+    setPendingPhoto(result.blob)
+    stopCamera()
     navigate('/nova')
   }
 
-  const hint =
-    phase === 'denied'
-      ? 'Sem acesso à câmera'
-      : phase === 'detected'
-        ? 'Segure firme… capturando'
-        : cvEnabled
-          ? 'Aponte para o comprovante'
-          : 'Toque no botão para fotografar'
+  function onRetake() {
+    if (result) URL.revokeObjectURL(result.url)
+    setResult(null)
+    setFullUrl('')
+    setAnimateIn(false)
+    setMode('camera')
+  }
+
+  /* ---------- render ---------- */
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
-      {/* Câmera */}
+      {/* Câmera ao vivo (fica montada para não reiniciar ao refazer) */}
       <div className="relative flex-1 overflow-hidden">
-        <video
-          ref={videoRef}
-          className="h-full w-full object-cover"
-          playsInline
-          muted
-          autoPlay
-        />
-        <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+        <video ref={videoRef} className="h-full w-full object-cover" playsInline muted autoPlay />
 
-        {/* Selo de status da detecção de bordas (diagnóstico) */}
-        <div className="absolute inset-x-0 top-16 flex flex-col items-center gap-1 px-4 text-center">
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-medium backdrop-blur ${
-              cvStatus === 'ready'
-                ? 'bg-emerald-500/25 text-emerald-200'
-                : cvStatus === 'error'
-                  ? 'bg-red-500/25 text-red-200'
-                  : 'bg-amber-500/25 text-amber-100'
-            }`}
-          >
-            {cvStatus === 'ready'
-              ? '● Detecção de bordas ativa'
-              : cvStatus === 'error'
-                ? '● Detecção indisponível — foto normal'
-                : '○ Carregando detecção de bordas…'}
-          </span>
-          {cvStatus === 'error' && cvError && (
-            <span className="max-w-[80%] text-[10px] text-red-200/80">{cvError}</span>
-          )}
-          {cvStatus === 'ready' && detectMsg && (
-            <span className="max-w-[80%] text-[10px] text-amber-200/80">⚠ {detectMsg}</span>
-          )}
-        </div>
+        {/* Moldura-guia */}
+        {mode === 'camera' && !cameraError && (
+          <div className="pointer-events-none absolute inset-6 rounded-2xl border-2 border-white/40" />
+        )}
 
-        {phase === 'denied' && (
+        {cameraError && mode === 'camera' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
             <span className="text-5xl">📷</span>
             <p className="text-slate-200">
-              Não foi possível abrir a câmera. Permita o acesso nas configurações ou escolha uma
-              foto da galeria.
+              Não foi possível abrir a câmera. Permita o acesso ou escolha uma foto da galeria.
             </p>
             <label className="rounded-xl bg-sky-500 px-6 py-3 font-semibold text-white active:bg-sky-600">
               Escolher da galeria
               <input type="file" accept="image/*" className="hidden" onChange={onPickFromGallery} />
             </label>
+          </div>
+        )}
+
+        {/* Revisão: foto + animação de recorte/zoom */}
+        {mode === 'review' && (
+          <div className="absolute inset-0 bg-black">
+            {fullUrl && (
+              <img
+                src={fullUrl}
+                alt=""
+                className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-500 ${
+                  animateIn ? 'opacity-0' : 'opacity-100'
+                }`}
+              />
+            )}
+            {result && (
+              <img
+                src={result.url}
+                alt="Documento"
+                className={`absolute inset-0 h-full w-full object-contain transition-all duration-500 ease-out ${
+                  animateIn ? 'scale-100 opacity-100' : 'scale-90 opacity-0'
+                }`}
+              />
+            )}
+
+            {processing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/40">
+                <span className="h-10 w-10 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+                <span className="text-sm text-white/90">Recortando documento…</span>
+              </div>
+            )}
+
+            {result && !processing && (
+              <span
+                className={`absolute left-1/2 top-20 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-medium backdrop-blur ${
+                  result.cropped ? 'bg-emerald-500/25 text-emerald-200' : 'bg-slate-500/30 text-slate-200'
+                }`}
+              >
+                {result.cropped ? '✓ Bordas ajustadas' : 'Foto completa'}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -308,7 +256,7 @@ export default function Scanner() {
         >
           ✕
         </button>
-        {hasTorch && (
+        {mode === 'camera' && hasTorch && (
           <button
             onClick={toggleTorch}
             className={`flex h-10 w-10 items-center justify-center rounded-full text-xl backdrop-blur ${
@@ -323,38 +271,80 @@ export default function Scanner() {
 
       {/* Controles inferiores */}
       <div className="absolute inset-x-0 bottom-0 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-6">
-        <p className="mb-4 text-center text-sm text-white/90 drop-shadow">{hint}</p>
-        <div className="grid grid-cols-3 items-center px-8">
-          <label className="justify-self-start text-sm text-white/80">
-            Galeria
-            <input type="file" accept="image/*" className="hidden" onChange={onPickFromGallery} />
-          </label>
-
-          <button
-            onClick={() => capture(lastCornersRef.current)}
-            disabled={phase === 'denied'}
-            className="h-20 w-20 justify-self-center rounded-full border-4 border-white bg-white/30 p-1 active:bg-white/50 disabled:opacity-40"
-            aria-label="Tirar foto"
-          >
-            <span className="block h-full w-full rounded-full bg-white" />
-          </button>
-
-          <button
-            onClick={() => {
-              stopCamera()
-              navigate('/nova')
-            }}
-            className="justify-self-end text-sm text-white/80"
-          >
-            Digitar
-          </button>
-        </div>
+        {mode === 'camera' ? (
+          <>
+            <p className="mb-4 text-center text-sm text-white/90 drop-shadow">
+              Enquadre o comprovante e toque para fotografar
+            </p>
+            <div className="grid grid-cols-3 items-center px-8">
+              <label className="justify-self-start text-sm text-white/80">
+                Galeria
+                <input type="file" accept="image/*" className="hidden" onChange={onPickFromGallery} />
+              </label>
+              <button
+                onClick={capturePhoto}
+                disabled={cameraError}
+                className="h-20 w-20 justify-self-center rounded-full border-4 border-white bg-white/30 p-1 active:bg-white/50 disabled:opacity-40"
+                aria-label="Tirar foto"
+              >
+                <span className="block h-full w-full rounded-full bg-white" />
+              </button>
+              <button
+                onClick={() => {
+                  stopCamera()
+                  navigate('/nova')
+                }}
+                className="justify-self-end text-sm text-white/80"
+              >
+                Digitar
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 px-8">
+            <button
+              onClick={onRetake}
+              className="rounded-xl border border-white/40 py-4 font-semibold text-white active:bg-white/10"
+            >
+              Refazer
+            </button>
+            <button
+              onClick={onUse}
+              disabled={!result || processing}
+              className="rounded-xl bg-sky-500 py-4 font-semibold text-white active:bg-sky-600 disabled:opacity-40"
+            >
+              Usar
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-/* ---------- helpers de geometria ---------- */
+/* ---------- helpers ---------- */
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ])
+}
+
+function downscale(src: HTMLCanvasElement, scale: number): HTMLCanvasElement {
+  if (scale >= 1) return src
+  const c = document.createElement('canvas')
+  c.width = Math.round(src.width * scale)
+  c.height = Math.round(src.height * scale)
+  c.getContext('2d')?.drawImage(src, 0, 0, c.width, c.height)
+  return c
+}
+
+function canvasToBlob(c: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    c.toBlob((b) => (b ? resolve(b) : reject(new Error('blob'))), 'image/jpeg', 0.9)
+  })
+}
 
 function isQuad(c: CornerPoints): c is Required<CornerPoints> {
   return !!(c.topLeftCorner && c.topRightCorner && c.bottomLeftCorner && c.bottomRightCorner)
@@ -375,14 +365,10 @@ function quadSize(c: Required<CornerPoints>): { w: number; h: number } {
   const bottom = dist(c.bottomLeftCorner, c.bottomRightCorner)
   const left = dist(c.topLeftCorner, c.bottomLeftCorner)
   const right = dist(c.topRightCorner, c.bottomRightCorner)
-  return { w: (top + bottom) / 2, h: (left + right) / 2 }
+  return { w: Math.max(120, (top + bottom) / 2), h: Math.max(120, (left + right) / 2) }
 }
 
-function scaleCorners(
-  c: Required<CornerPoints>,
-  sx: number,
-  sy: number,
-): Required<CornerPoints> {
+function scaleCorners(c: Required<CornerPoints>, sx: number, sy: number): Required<CornerPoints> {
   const s = (p: Corner): Corner => ({ x: p.x * sx, y: p.y * sy })
   return {
     topLeftCorner: s(c.topLeftCorner),
@@ -392,35 +378,6 @@ function scaleCorners(
   }
 }
 
-function maxCornerShift(a: Required<CornerPoints>, b: Required<CornerPoints>): number {
-  return Math.max(
-    dist(a.topLeftCorner, b.topLeftCorner),
-    dist(a.topRightCorner, b.topRightCorner),
-    dist(a.bottomLeftCorner, b.bottomLeftCorner),
-    dist(a.bottomRightCorner, b.bottomRightCorner),
-  )
-}
-
 function dist(p1: Corner, p2: Corner): number {
   return Math.hypot(p1.x - p2.x, p1.y - p2.y)
-}
-
-function drawQuad(
-  ctx: CanvasRenderingContext2D,
-  c: Required<CornerPoints>,
-  sx: number,
-  sy: number,
-  progress: number,
-) {
-  const pts = [c.topLeftCorner, c.topRightCorner, c.bottomRightCorner, c.bottomLeftCorner]
-  ctx.beginPath()
-  ctx.moveTo(pts[0].x * sx, pts[0].y * sy)
-  for (let i = 1; i < 4; i++) ctx.lineTo(pts[i].x * sx, pts[i].y * sy)
-  ctx.closePath()
-  const green = progress > 0.05
-  ctx.fillStyle = green ? `rgba(16,185,129,${0.15 + progress * 0.2})` : 'rgba(56,189,248,0.12)'
-  ctx.fill()
-  ctx.strokeStyle = green ? '#10b981' : '#38bdf8'
-  ctx.lineWidth = 4
-  ctx.stroke()
 }
