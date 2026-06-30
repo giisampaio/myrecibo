@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Trash2 } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Plus, Trash2, ChevronDown } from 'lucide-react'
 import { addExpense } from '../db/repository'
 import { nodeToImage, imageToPdf } from '../lib/receiptRender'
 import { RECEIPT_TEMPLATES, type ReceiptRenderData } from '../lib/receiptTemplates'
@@ -31,6 +32,7 @@ export default function ReciboManual() {
   const [paymentType, setPaymentType] = useState<PaymentType>('pessoal')
   const [category, setCategory] = useState<Category>('outros')
   const [busy, setBusy] = useState<null | 'pdf' | 'save'>(null)
+  const [advanced, setAdvanced] = useState(false)
 
   const itemsTotal = items.reduce((s, it) => s + it.qty * it.unitPrice, 0)
   const total = itemsTotal > 0 ? itemsTotal : parseBRL(valor)
@@ -144,53 +146,74 @@ export default function ReciboManual() {
       {/* Itens */}
       <div className="mb-2 flex items-center justify-between">
         <Label>Itens (opcional)</Label>
-        <button onClick={addItem} className="press flex items-center gap-1 text-sm text-[var(--text)]">
+        <button
+          onClick={addItem}
+          className="press flex items-center gap-1 text-sm font-medium text-[var(--text)]"
+        >
           <Plus size={16} /> Adicionar
         </button>
       </div>
-      {items.length === 0 && (
+      {items.length === 0 ? (
         <p className="mb-4 text-xs text-[var(--text-muted)]">
-          Sem itens: usa o valor abaixo. Com itens, o total é calculado.
+          Sem itens, usa o valor abaixo. Com itens, o total é calculado.
         </p>
-      )}
-      {items.length > 0 && (
+      ) : (
         <div className="mb-4 space-y-2">
           {items.map((it, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input
-                value={it.description}
-                onChange={(e) => patchItem(i, { description: e.target.value })}
-                placeholder="Descrição"
-                className="input flex-1"
-              />
-              <input
-                type="number"
-                min={1}
-                value={it.qty}
-                onChange={(e) => patchItem(i, { qty: Math.max(1, Number(e.target.value) || 1) })}
-                className="input w-14 text-center"
-                aria-label="Quantidade"
-              />
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={it.unitPrice || ''}
-                onChange={(e) => patchItem(i, { unitPrice: Number(e.target.value) || 0 })}
-                placeholder="Unit."
-                className="input w-20"
-                aria-label="Valor unitário"
-              />
-              <button onClick={() => removeItem(i)} className="press p-2 text-[var(--text-muted)]" aria-label="Remover">
-                <Trash2 size={18} />
-              </button>
+            <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  value={it.description}
+                  onChange={(e) => patchItem(i, { description: e.target.value })}
+                  placeholder="Descrição do item"
+                  className="input flex-1"
+                />
+                <button
+                  onClick={() => removeItem(i)}
+                  className="press shrink-0 p-1 text-[var(--text-muted)]"
+                  aria-label="Remover item"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] text-[var(--text-muted)]">Qtd</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    value={it.qty}
+                    onChange={(e) => patchItem(i, { qty: Math.max(1, Number(e.target.value) || 1) })}
+                    className="input"
+                    aria-label="Quantidade"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] text-[var(--text-muted)]">Valor unitário</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.01"
+                    value={it.unitPrice || ''}
+                    onChange={(e) => patchItem(i, { unitPrice: Number(e.target.value) || 0 })}
+                    placeholder="0,00"
+                    className="input"
+                    aria-label="Valor unitário"
+                  />
+                </label>
+              </div>
+              <div className="mt-2 text-right text-xs text-[var(--text-muted)]">
+                Subtotal: {formatBRL(it.qty * it.unitPrice)}
+              </div>
             </div>
           ))}
           <div className="flex justify-end pt-1 text-sm font-medium">Total: {formatBRL(itemsTotal)}</div>
         </div>
       )}
 
-      {/* Campos */}
+      {/* Essenciais */}
       {items.length === 0 && (
         <Field label="Valor (R$)">
           <input
@@ -203,15 +226,6 @@ export default function ReciboManual() {
         </Field>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Data">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
-        </Field>
-        <Field label="Cidade">
-          <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" className="input" />
-        </Field>
-      </div>
-
       <Field label="Referente a">
         <input
           value={refersTo}
@@ -222,32 +236,68 @@ export default function ReciboManual() {
       </Field>
 
       <Field label="Emitente (quem assina / estabelecimento)">
-        <input value={issuerName} onChange={(e) => setIssuerName(e.target.value)} placeholder="Nome" className="input mb-2" />
-        <input value={issuerDoc} onChange={(e) => setIssuerDoc(e.target.value)} placeholder="CPF/CNPJ (opcional)" className="input" />
+        <input value={issuerName} onChange={(e) => setIssuerName(e.target.value)} placeholder="Nome" className="input" />
       </Field>
 
       <Field label="Pagador (quem pagou)">
-        <input value={payerName} onChange={(e) => setPayerName(e.target.value)} placeholder="Nome" className="input mb-2" />
-        <input value={payerDoc} onChange={(e) => setPayerDoc(e.target.value)} placeholder="CPF/CNPJ (opcional)" className="input" />
+        <input value={payerName} onChange={(e) => setPayerName(e.target.value)} placeholder="Nome" className="input" />
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Forma de pagamento">
-          <select value={paymentType} onChange={(e) => setPaymentType(e.target.value as PaymentType)} className="input">
-            <option value="corporativo">Corporativo</option>
-            <option value="pessoal">Pessoal</option>
-          </select>
-        </Field>
-        <Field label="Categoria">
-          <select value={category} onChange={(e) => setCategory(e.target.value as Category)} className="input">
-            {Object.entries(CATEGORY_LABELS).map(([k, label]) => (
-              <option key={k} value={k}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
+      {/* Mais detalhes (recolhível) */}
+      <button
+        onClick={() => setAdvanced(!advanced)}
+        className="press mb-3 flex w-full items-center justify-between rounded-xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-muted)]"
+      >
+        <span>Mais detalhes</span>
+        <ChevronDown
+          size={16}
+          className="transition-transform"
+          style={{ transform: advanced ? 'rotate(180deg)' : 'none' }}
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {advanced && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Data">
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
+              </Field>
+              <Field label="Cidade">
+                <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" className="input" />
+              </Field>
+            </div>
+            <Field label="CPF/CNPJ do emitente">
+              <input value={issuerDoc} onChange={(e) => setIssuerDoc(e.target.value)} placeholder="Opcional" className="input" />
+            </Field>
+            <Field label="CPF/CNPJ do pagador">
+              <input value={payerDoc} onChange={(e) => setPayerDoc(e.target.value)} placeholder="Opcional" className="input" />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Forma de pagamento">
+                <select value={paymentType} onChange={(e) => setPaymentType(e.target.value as PaymentType)} className="input">
+                  <option value="corporativo">Corporativo</option>
+                  <option value="pessoal">Pessoal</option>
+                </select>
+              </Field>
+              <Field label="Categoria">
+                <select value={category} onChange={(e) => setCategory(e.target.value as Category)} className="input">
+                  {Object.entries(CATEGORY_LABELS).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <button onClick={onDownload} disabled={busy !== null} className="btn-ghost">

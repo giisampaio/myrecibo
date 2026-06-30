@@ -65,7 +65,8 @@ button {
   font-family: inherit;
 }
 
-/* ---------- Componentes base ---------- */
+/* ---------- Componentes base (em @layer para os utilitários do Tailwind poderem sobrepor) ---------- */
+@layer components {
 .input {
   width: 100%;
   min-height: 48px;
@@ -161,6 +162,7 @@ button {
 }
 .key-action:active {
   background-color: var(--surface-2);
+}
 }
 
 @media (prefers-reduced-motion: reduce) {
