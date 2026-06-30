@@ -75,7 +75,7 @@ export default function Home() {
 
       <Link
         to="/nova"
-        className="fixed bottom-20 right-4 z-20 flex items-center gap-2 rounded-full bg-[var(--ink)] px-5 py-4 font-medium text-[var(--ink-contrast)] shadow-lg"
+        className="press fixed bottom-20 right-4 z-20 flex items-center gap-2 rounded-full bg-[var(--ink)] px-5 py-4 font-medium text-[var(--ink-contrast)] shadow-lg"
       >
         <Plus size={20} />
         Nova despesa

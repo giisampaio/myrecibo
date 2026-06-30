@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import {
   ArrowLeft,
   X,
@@ -22,6 +22,7 @@ import {
 import { addExpense } from '../db/repository'
 import { readReceipt } from '../lib/ocr'
 import { takePendingPhoto } from '../lib/pendingPhoto'
+import { haptic } from '../lib/haptics'
 import { formatBRL, formatCentsBR, todayISO, formatDateBR } from '../lib/format'
 import { CATEGORY_LABELS, type Category, type PaymentType } from '../types'
 
@@ -57,6 +58,7 @@ export default function NovaDespesa() {
   const [description, setDescription] = useState('')
   const [advanced, setAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   const steps = useMemo<Step[]>(
     () => (skipCategory ? ['valor', 'pagamento'] : ['valor', 'categoria', 'pagamento']),
@@ -126,7 +128,9 @@ export default function NovaDespesa() {
       source: photo ? 'ocr' : 'manual',
       photo,
     })
-    navigate('/despesas', { replace: true })
+    haptic('success')
+    setSaved(true)
+    setTimeout(() => navigate('/despesas', { replace: true }), 800)
   }
 
   const variants = {
@@ -160,6 +164,7 @@ export default function NovaDespesa() {
       </header>
 
       <div className="relative flex-1 overflow-hidden">
+        <MotionConfig reducedMotion="user">
         <AnimatePresence custom={dir} mode="wait" initial={false}>
           <motion.div
             key={step}
@@ -168,7 +173,7 @@ export default function NovaDespesa() {
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ duration: 0.22, ease: 'easeOut' }}
+            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
             className="absolute inset-0 flex flex-col px-[var(--screen-x)] pb-[max(16px,env(safe-area-inset-bottom))] pt-2"
           >
             {step === 'valor' && (
@@ -213,7 +218,21 @@ export default function NovaDespesa() {
             )}
           </motion.div>
         </AnimatePresence>
+        </MotionConfig>
       </div>
+
+      {saved && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--bg)]">
+          <motion.div
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 18 }}
+            className="flex h-20 w-20 items-center justify-center rounded-full bg-[var(--ink)] text-[var(--ink-contrast)]"
+          >
+            <Check size={40} />
+          </motion.div>
+        </div>
+      )}
 
       <input
         ref={fileRef}
@@ -284,7 +303,7 @@ function StepValor({
                 <button
                   key={c}
                   onClick={() => onSetCents(Math.round(c * 100))}
-                  className="rounded-full border px-3 py-1.5 text-sm transition-colors"
+                  className="press rounded-full border px-3 py-1.5 text-sm transition-colors"
                   style={{
                     borderColor: active ? 'var(--ink)' : 'var(--border)',
                     color: active ? 'var(--text)' : 'var(--text-muted)',
@@ -318,8 +337,8 @@ function Keypad({ onDigit, onBackspace }: { onDigit: (d: number) => void; onBack
       ))}
       <span />
       <KeyBtn onClick={() => onDigit(0)}>0</KeyBtn>
-      <KeyBtn onClick={onBackspace} aria-label="Apagar">
-        <Delete size={22} />
+      <KeyBtn onClick={onBackspace} action aria-label="Apagar">
+        <Delete size={24} />
       </KeyBtn>
     </div>
   )
@@ -328,17 +347,22 @@ function Keypad({ onDigit, onBackspace }: { onDigit: (d: number) => void; onBack
 function KeyBtn({
   children,
   onClick,
+  action,
   'aria-label': ariaLabel,
 }: {
   children: React.ReactNode
   onClick: () => void
+  action?: boolean
   'aria-label'?: string
 }) {
   return (
     <button
-      onClick={onClick}
+      onClick={() => {
+        haptic('light')
+        onClick()
+      }}
       aria-label={ariaLabel}
-      className="flex h-12 items-center justify-center rounded-xl text-xl font-medium text-[var(--text)] active:bg-[var(--surface-2)]"
+      className={`key${action ? ' key-action' : ''}`}
     >
       {children}
     </button>
@@ -363,8 +387,11 @@ function StepCategoria({
           return (
             <button
               key={key}
-              onClick={() => onSelect(key)}
-              className="flex h-24 flex-col items-center justify-center gap-2 rounded-xl border transition-colors"
+              onClick={() => {
+                haptic('light')
+                onSelect(key)
+              }}
+              className="press flex h-24 flex-col items-center justify-center gap-2 rounded-xl border transition-colors"
               style={{
                 borderColor: active ? 'var(--ink)' : 'var(--border)',
                 backgroundColor: active ? 'var(--surface-2)' : 'var(--surface)',
@@ -516,8 +543,11 @@ function PayCard({
 }) {
   return (
     <button
-      onClick={onClick}
-      className="relative flex h-24 flex-col items-center justify-center gap-2 rounded-xl border transition-colors"
+      onClick={() => {
+        haptic('light')
+        onClick()
+      }}
+      className="press relative flex h-24 flex-col items-center justify-center gap-2 rounded-xl border transition-colors"
       style={{
         borderColor: active ? 'var(--ink)' : 'var(--border)',
         backgroundColor: active ? 'var(--surface-2)' : 'var(--surface)',

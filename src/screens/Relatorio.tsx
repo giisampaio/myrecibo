@@ -117,7 +117,7 @@ function ExportRow({
     <button
       onClick={onClick}
       disabled={disabled}
-      className="mb-3 flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left disabled:opacity-50"
+      className="press mb-3 flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left disabled:opacity-50"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)]">
         <Icon size={20} className="text-[var(--text)]" />

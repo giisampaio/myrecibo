@@ -44,7 +44,7 @@ function Tab({ to, label, Icon }: { to: string; label: string; Icon: LucideIcon 
       to={to}
       end={to === '/'}
       className={({ isActive }) =>
-        `flex flex-col items-center gap-1 py-2.5 text-[11px] ${
+        `press flex flex-col items-center gap-1 py-2.5 text-[11px] ${
           isActive ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'
         }`
       }

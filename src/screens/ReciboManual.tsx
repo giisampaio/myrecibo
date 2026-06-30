@@ -89,7 +89,7 @@ export default function ReciboManual() {
             <button
               key={t.key}
               onClick={() => setTemplate(t.key)}
-              className="flex flex-col items-center gap-1 rounded-xl border-2 p-2"
+              className="press flex flex-col items-center gap-1 rounded-xl border-2 p-2"
               style={{ borderColor: template === t.key ? 'var(--ink)' : 'var(--border)' }}
             >
               <span className={`h-10 w-full rounded ${t.preview}`} />

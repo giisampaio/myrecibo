@@ -128,3 +128,52 @@ button {
   justify-content: center;
   color: var(--text-muted);
 }
+
+/* Feedback de toque universal (motion funcional) */
+.press {
+  transition: transform 0.09s ease, background-color 0.09s ease, opacity 0.12s ease;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+.press:active {
+  transform: scale(0.97);
+}
+
+/* Tecla do teclado de valor (alvo grande, HIG) */
+.key {
+  display: flex;
+  height: 60px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  background-color: var(--surface-2);
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 500;
+}
+.key:active {
+  background-color: var(--border);
+  transform: scale(0.97);
+}
+.key-action {
+  background-color: transparent;
+  color: var(--text-muted);
+}
+.key-action:active {
+  background-color: var(--surface-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .press,
+  .key,
+  .btn-primary,
+  .btn-ghost {
+    transition: none;
+  }
+  .press:active,
+  .key:active,
+  .btn-primary:active,
+  .btn-ghost:active {
+    transform: none;
+  }
+}
