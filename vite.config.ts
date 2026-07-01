@@ -34,7 +34,7 @@ export default defineConfig({
         // para o app instalar/atualizar rápido; são cacheados sob demanda na
         // 1ª foto (runtimeCaching abaixo).
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        globIgnores: ['**/opencv/**', '**/ocr/**', '**/*.wasm'],
+        globIgnores: ['**/opencv/**', '**/ocr/**', '**/ort/**', '**/*.wasm'],
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
         navigateFallback: 'index.html',
         runtimeCaching: [
@@ -49,12 +49,12 @@ export default defineConfig({
             },
           },
           {
-            // Modelos do PaddleOCR + WASM do ONNX Runtime: cacheia no 1º OCR
-            urlPattern: /\/ocr\/|\.wasm$/,
+            // Modelos do PaddleOCR + runtime WASM do ONNX: cacheia no 1º OCR
+            urlPattern: /\/(ocr|ort)\/|\.wasm$/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'ocr-local',
-              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 180 },
+              expiration: { maxEntries: 12, maxAgeSeconds: 60 * 60 * 24 * 180 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { X, Flashlight, Image as ImageIcon, Keyboard, Check, Camera } from 'lucide-react'
 import { setPendingPhoto } from '../lib/pendingPhoto'
 import { warmupScanner, whenScannerReady, detectDocument } from '../lib/scannerWorker'
+import { warmupOcr } from '../lib/ocr'
 
 const READY_WAIT_MS = 15000 // espera o OpenCV ficar pronto no worker
 const PROCESS_MS = 15000 // tempo máximo para detectar/recortar
@@ -35,6 +36,8 @@ export default function Scanner() {
     startCamera()
     // Pré-carrega o OpenCV no worker (persistente) já na abertura da câmera
     warmupScanner()
+    // Pré-carrega o leitor de cupom (modelos do OCR) enquanto o usuário enquadra
+    warmupOcr()
     return () => stopCamera()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

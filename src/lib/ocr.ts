@@ -31,10 +31,18 @@ interface OcrLine {
 // Tesseract em cupom térmico/foto de celular.
 
 let serviceP: Promise<any> | null = null
+let ready = false
 
 function getService(): Promise<any> {
   if (!serviceP) {
     serviceP = (async () => {
+      // WASM do ONNX auto-hospedado em produção (senão a lib cai num CDN
+      // externo). No dev fica o CDN: o Vite não deixa importar módulo de
+      // public/ durante o desenvolvimento.
+      if (import.meta.env.PROD) {
+        const ort = await import('onnxruntime-web')
+        if (!ort.env.wasm.wasmPaths) ort.env.wasm.wasmPaths = '/ort/'
+      }
       const { PaddleOcrService } = await import('ppu-paddle-ocr/web')
       const service = new PaddleOcrService({
         model: {
@@ -44,6 +52,7 @@ function getService(): Promise<any> {
         },
       })
       await service.initialize()
+      ready = true
       return service
     })()
     // Falhou (rede/WASM)? Zera para tentar de novo na próxima foto.
@@ -54,9 +63,20 @@ function getService(): Promise<any> {
   return serviceP
 }
 
+/** Começa a baixar/inicializar o leitor em segundo plano (ex.: ao abrir o
+ *  scanner) — quando a foto sair, o OCR já está de pé. */
+export function warmupOcr(): void {
+  getService().catch(() => {})
+}
+
+/** true quando os modelos já estão carregados (leitura será rápida). */
+export function isOcrReady(): boolean {
+  return ready
+}
+
 export async function readReceipt(image: Blob): Promise<OcrGuess> {
   const input = await preprocess(image)
-  const buf = await toArrayBuffer(input)
+  const buf = await input.arrayBuffer()
   const service = await getService()
 
   const res = await service.recognize(buf)
@@ -93,14 +113,6 @@ function mapLines(res: any): OcrLine[] {
     if (words.length) out.push({ text: words.map((w) => w.text).join(' '), words })
   }
   return out
-}
-
-async function toArrayBuffer(input: HTMLCanvasElement | Blob): Promise<ArrayBuffer> {
-  if (input instanceof Blob) return input.arrayBuffer()
-  const blob = await new Promise<Blob>((resolve, reject) =>
-    input.toBlob((b) => (b ? resolve(b) : reject(new Error('blob'))), 'image/png'),
-  )
-  return blob.arrayBuffer()
 }
 
 /* ---------- estabelecimento (topo do cupom) ---------- */
@@ -166,76 +178,34 @@ export function guessCategory(text: string): Category | null {
 /* ---------- pré-processamento ---------- */
 
 /**
- * Realça a imagem para OCR: upscale, remove tinta colorida (caneta azul/vermelha
- * vira branco — prioriza o impresso preto) e normaliza o contraste.
+ * Só reduz fotos gigantes (câmera sem recorte). O PP-OCR trabalha melhor com
+ * a imagem colorida natural — nada de filtro de tinta/contraste (isso era
+ * muleta do Tesseract e ainda apagava valores escritos à caneta, que em
+ * cupom manual são o total de verdade). JPEG: encode bem mais rápido que PNG.
  */
-async function preprocess(blob: Blob): Promise<HTMLCanvasElement | Blob> {
+const MAX_SIDE = 1600
+
+async function preprocess(blob: Blob): Promise<Blob> {
   try {
     const img = await loadImage(blob)
-    const MIN_W = 1500
-    const MAX_W = 2400
-    let scale = 1
-    if (img.naturalWidth < MIN_W) scale = MIN_W / img.naturalWidth
-    if (img.naturalWidth * scale > MAX_W) scale = MAX_W / img.naturalWidth
+    const side = Math.max(img.naturalWidth, img.naturalHeight)
+    if (side <= MAX_SIDE) return blob
+
+    const scale = MAX_SIDE / side
     const w = Math.round(img.naturalWidth * scale)
     const h = Math.round(img.naturalHeight * scale)
-
     const canvas = document.createElement('canvas')
     canvas.width = w
     canvas.height = h
     const ctx = canvas.getContext('2d')
     if (!ctx) return blob
     ctx.drawImage(img, 0, 0, w, h)
-
-    const id = ctx.getImageData(0, 0, w, h)
-    const px = id.data
-    const hist = new Uint32Array(256)
-
-    for (let i = 0; i < px.length; i += 4) {
-      const r = px[i]
-      const g = px[i + 1]
-      const b = px[i + 2]
-      const mx = Math.max(r, g, b)
-      const mn = Math.min(r, g, b)
-      // pixel colorido (caneta) e não muito escuro -> vira branco (some)
-      let gray: number
-      if (mx - mn > 45 && mx > 60) {
-        gray = 255
-      } else {
-        gray = (r * 0.299 + g * 0.587 + b * 0.114) | 0
-      }
-      px[i] = px[i + 1] = px[i + 2] = gray
-      hist[gray]++
-    }
-
-    // contraste: estica entre os percentis 2% e 98%
-    const total = w * h
-    const lo = percentile(hist, total, 0.02)
-    const hi = percentile(hist, total, 0.98)
-    if (hi > lo) {
-      const span = hi - lo
-      for (let i = 0; i < px.length; i += 4) {
-        let v = ((px[i] - lo) * 255) / span
-        v = v < 0 ? 0 : v > 255 ? 255 : v
-        px[i] = px[i + 1] = px[i + 2] = v
-      }
-    }
-
-    ctx.putImageData(id, 0, 0)
-    return canvas
+    return await new Promise<Blob>((resolve) =>
+      canvas.toBlob((b) => resolve(b ?? blob), 'image/jpeg', 0.85),
+    )
   } catch {
     return blob
   }
-}
-
-function percentile(hist: Uint32Array, total: number, p: number): number {
-  const target = total * p
-  let acc = 0
-  for (let i = 0; i < 256; i++) {
-    acc += hist[i]
-    if (acc >= target) return i
-  }
-  return 255
 }
 
 function loadImage(blob: Blob): Promise<HTMLImageElement> {

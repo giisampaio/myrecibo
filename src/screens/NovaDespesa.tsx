@@ -21,7 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { addExpense } from '../db/repository'
-import { readReceipt } from '../lib/ocr'
+import { readReceipt, isOcrReady } from '../lib/ocr'
 import { peekPendingPhoto, clearPendingPhoto } from '../lib/pendingPhoto'
 import { haptic } from '../lib/haptics'
 import { formatBRL, formatCentsBR, todayISO, formatDateBR } from '../lib/format'
@@ -49,6 +49,7 @@ export default function NovaDespesa() {
   const [photo, setPhoto] = useState<Blob | undefined>()
   const [photoUrl, setPhotoUrl] = useState<string>()
   const [reading, setReading] = useState(false)
+  const [readingLabel, setReadingLabel] = useState('')
   const [candidates, setCandidates] = useState<number[]>([])
 
   const [cents, setCents] = useState(0)
@@ -96,6 +97,11 @@ export default function NovaDespesa() {
     setPhoto(file)
     setPhotoUrl(URL.createObjectURL(file))
     setReading(true)
+    setReadingLabel(
+      isOcrReady()
+        ? 'Lendo o comprovante — pode digitar'
+        : 'Baixando o leitor (só na 1ª vez) — pode digitar',
+    )
     try {
       const guess = await readReceipt(file)
       if (guess.amount != null && !touchedRef.current) setCents(Math.round(guess.amount * 100))
@@ -204,6 +210,7 @@ export default function NovaDespesa() {
               <StepValor
                 photoUrl={photoUrl}
                 reading={reading}
+                readingLabel={readingLabel}
                 cents={cents}
                 candidates={candidates}
                 onPick={() => (photoUrl ? setLightbox(true) : navigate('/'))}
@@ -291,6 +298,7 @@ export default function NovaDespesa() {
 function StepValor({
   photoUrl,
   reading,
+  readingLabel,
   cents,
   candidates,
   onPick,
@@ -301,6 +309,7 @@ function StepValor({
 }: {
   photoUrl?: string
   reading: boolean
+  readingLabel: string
   cents: number
   candidates: number[]
   onPick: () => void
@@ -330,7 +339,7 @@ function StepValor({
         </button>
 
         <p className="mb-2 text-sm text-[var(--text-muted)]">
-          {reading ? 'Lendo o comprovante — pode digitar' : 'Confirme o valor'}
+          {reading ? readingLabel : 'Confirme o valor'}
         </p>
 
         <div className="flex items-baseline gap-1.5">
