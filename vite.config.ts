@@ -29,11 +29,12 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // App roda offline: cacheia o shell. O OpenCV (10 MB) fica FORA do
-        // pré-cache para o app instalar/atualizar rápido; ele é cacheado sob
-        // demanda na 1ª foto (runtimeCaching abaixo).
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2,wasm,traineddata,gz}'],
-        globIgnores: ['**/opencv/**'],
+        // App roda offline: cacheia o shell. O OpenCV (10 MB), os modelos do
+        // PaddleOCR (~30 MB) e o WASM do ONNX Runtime ficam FORA do pré-cache
+        // para o app instalar/atualizar rápido; são cacheados sob demanda na
+        // 1ª foto (runtimeCaching abaixo).
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globIgnores: ['**/opencv/**', '**/ocr/**', '**/*.wasm'],
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
         navigateFallback: 'index.html',
         runtimeCaching: [
@@ -48,13 +49,12 @@ export default defineConfig({
             },
           },
           {
-            // Assets do Tesseract (OCR) vindos de CDN: cacheia após o 1º uso
-            urlPattern:
-              /^https:\/\/(cdn\.jsdelivr\.net|unpkg\.com|tessdata\.projectnaptha\.com|docs\.opencv\.org)\//,
+            // Modelos do PaddleOCR + WASM do ONNX Runtime: cacheia no 1º OCR
+            urlPattern: /\/ocr\/|\.wasm$/,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'cv-ocr-cdn',
-              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheName: 'ocr-local',
+              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 180 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },

@@ -106,6 +106,8 @@ export default function NovaDespesa() {
         setCategory((c) => c ?? guess.category!)
         setSkipCategory(true)
       }
+      // Estabelecimento lido do topo do cupom (não sobrescreve o digitado)
+      if (guess.vendor) setVendor((v) => v || guess.vendor!)
     } catch {
       /* OCR opcional */
     } finally {

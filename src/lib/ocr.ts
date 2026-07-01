@@ -10,6 +10,8 @@ export interface OcrGuess {
   date?: string // yyyy-mm-dd
   /** categoria detectada pelo texto (null = não identificou) */
   category: Category | null
+  /** palpite do nome do estabelecimento (topo do cupom) */
+  vendor?: string
   rawText: string
 }
 
@@ -23,46 +25,43 @@ interface OcrLine {
   words: OcrWord[]
 }
 
-/* ---------- worker do Tesseract (singleton) ---------- */
+/* ---------- motor PaddleOCR (PP-OCRv6 via ONNX Runtime, singleton) ---------- */
+// Modelos auto-hospedados em public/ocr/ (~30 MB, baixados uma vez e cacheados
+// pelo service worker — mesmo padrão do OpenCV). Muito mais preciso que o
+// Tesseract em cupom térmico/foto de celular.
 
-let progressCb: ((p: number) => void) | null = null
-let workerP: Promise<any> | null = null
+let serviceP: Promise<any> | null = null
 
-function getWorker(): Promise<any> {
-  if (!workerP) {
-    workerP = (async () => {
-      const { createWorker, PSM } = await import('tesseract.js')
-      const worker = await createWorker('por', 1, {
-        logger: (m: any) => {
-          if (m.status === 'recognizing text' && progressCb) progressCb(m.progress)
+function getService(): Promise<any> {
+  if (!serviceP) {
+    serviceP = (async () => {
+      const { PaddleOcrService } = await import('ppu-paddle-ocr/web')
+      const service = new PaddleOcrService({
+        model: {
+          detection: '/ocr/det.ort',
+          recognition: '/ocr/rec.ort',
+          charactersDictionary: '/ocr/dict.txt',
         },
       })
-      // PSM 4: assume uma coluna de texto de tamanhos variados (recomendado p/ recibos)
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_COLUMN })
-      return worker
+      await service.initialize()
+      return service
     })()
+    // Falhou (rede/WASM)? Zera para tentar de novo na próxima foto.
+    serviceP.catch(() => {
+      serviceP = null
+    })
   }
-  return workerP
+  return serviceP
 }
 
-export async function readReceipt(
-  image: Blob,
-  onProgress?: (p: number) => void,
-): Promise<OcrGuess> {
+export async function readReceipt(image: Blob): Promise<OcrGuess> {
   const input = await preprocess(image)
-  const worker = await getWorker()
+  const buf = await toArrayBuffer(input)
+  const service = await getService()
 
-  progressCb = onProgress ?? null
-  let data: any
-  try {
-    const res = await worker.recognize(input, {}, { blocks: true, text: true })
-    data = res.data
-  } finally {
-    progressCb = null
-  }
-
-  const text: string = data?.text || ''
-  const lines = flattenLines(data)
+  const res = await service.recognize(buf)
+  const lines = mapLines(res)
+  const text: string = res?.text || lines.map((l) => l.text).join('\n')
   const amount = lines.length ? amountFromLines(lines) : amountFromText(text)
 
   return {
@@ -71,8 +70,62 @@ export async function readReceipt(
     candidates: amount.candidates,
     date: guessDate(text),
     category: guessCategory(text),
+    vendor: guessVendor(lines),
     rawText: text,
   }
+}
+
+/** Converte o resultado do PP-OCR (linhas de itens com box + confiança 0–1)
+ *  para o formato interno (confiança 0–100, bbox x0/y0/x1/y1). */
+function mapLines(res: any): OcrLine[] {
+  const out: OcrLine[] = []
+  for (const line of res?.lines ?? []) {
+    const words: OcrWord[] = (line ?? []).map((item: any) => ({
+      text: String(item?.text ?? ''),
+      confidence: Number(item?.confidence ?? 0) * 100,
+      bbox: {
+        x0: Number(item?.box?.x ?? 0),
+        y0: Number(item?.box?.y ?? 0),
+        x1: Number(item?.box?.x ?? 0) + Number(item?.box?.width ?? 0),
+        y1: Number(item?.box?.y ?? 0) + Number(item?.box?.height ?? 0),
+      },
+    }))
+    if (words.length) out.push({ text: words.map((w) => w.text).join(' '), words })
+  }
+  return out
+}
+
+async function toArrayBuffer(input: HTMLCanvasElement | Blob): Promise<ArrayBuffer> {
+  if (input instanceof Blob) return input.arrayBuffer()
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    input.toBlob((b) => (b ? resolve(b) : reject(new Error('blob'))), 'image/png'),
+  )
+  return blob.arrayBuffer()
+}
+
+/* ---------- estabelecimento (topo do cupom) ---------- */
+
+const NOT_VENDOR_RE =
+  /\b(cnpj|cpf|i\.?e\.?[:.]|insc|nfc-?e|nf-?e|cupom|fiscal|extrato|documento|sat\b|via\s+do|consumidor|rua\b|av\.|avenida|fone|tel|cep\b|www\.|http)/i
+
+/** Primeira linha "com cara de nome" entre as primeiras do cupom.
+ *  Só troca por uma linha de baixo se ela for bem maior (nome em destaque). */
+function guessVendor(lines: OcrLine[]): string | undefined {
+  const top = lines.slice(0, 5)
+  let best: { text: string; height: number } | undefined
+  for (const line of top) {
+    const t = line.text.trim()
+    if (t.length < 4 || t.length > 40) continue
+    if (NOT_VENDOR_RE.test(t)) continue
+    if (/^\d+\s*x\b/i.test(t)) continue // linha de item (1x ...)
+    if (parseMoney(t) != null) continue // linha com valor
+    const letters = (t.match(/\p{L}/gu) ?? []).length
+    if (letters / t.length < 0.55) continue
+    const height = Math.max(...line.words.map((w) => w.bbox.y1 - w.bbox.y0), 0)
+    if (!best) best = { text: t, height }
+    else if (height > best.height * 1.3) best = { text: t, height }
+  }
+  return best?.text
 }
 
 /* ---------- categoria por palavras-chave ---------- */
@@ -108,23 +161,6 @@ const CATEGORY_KEYWORDS: { cat: Category; re: RegExp }[] = [
 export function guessCategory(text: string): Category | null {
   for (const { cat, re } of CATEGORY_KEYWORDS) if (re.test(text)) return cat
   return null
-}
-
-function flattenLines(data: any): OcrLine[] {
-  const out: OcrLine[] = []
-  for (const b of data?.blocks ?? []) {
-    for (const p of b?.paragraphs ?? []) {
-      for (const l of p?.lines ?? []) {
-        const words: OcrWord[] = (l?.words ?? []).map((w: any) => ({
-          text: String(w?.text ?? ''),
-          confidence: Number(w?.confidence ?? 0),
-          bbox: w?.bbox ?? { x0: 0, y0: 0, x1: 0, y1: 0 },
-        }))
-        out.push({ text: String(l?.text ?? words.map((w) => w.text).join(' ')), words })
-      }
-    }
-  }
-  return out
 }
 
 /* ---------- pré-processamento ---------- */

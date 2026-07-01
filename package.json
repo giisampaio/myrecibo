@@ -16,11 +16,12 @@
     "framer-motion": "^12.42.1",
     "html2canvas-pro": "^2.2.1",
     "lucide-react": "^1.22.0",
+    "onnxruntime-web": "^1.27.0",
     "pdf-lib": "^1.17.1",
+    "ppu-paddle-ocr": "^6.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.0",
-    "tesseract.js": "^5.1.0",
     "xlsx": "^0.18.5",
     "xlsx-js-style": "^1.2.0"
   },
