@@ -58,6 +58,11 @@ export type ReceiptTemplate =
   | 'comanda'
   | 'itens-moderno'
   | 'itens-colorido'
+  | 'servico'
+  | 'taxi'
+  | 'canhoto'
+  | 'manuscrito'
+  | 'pautado'
 
 /** Item lançado manualmente no recibo (não é persistido) */
 export interface ReceiptItem {

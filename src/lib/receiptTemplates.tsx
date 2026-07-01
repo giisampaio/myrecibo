@@ -359,6 +359,245 @@ function ItensColorido({ data: d }: { data: ReceiptRenderData }) {
   )
 }
 
+/* ---------- 11. Prestação de serviços ---------- */
+function Servico({ data: d }: { data: ReceiptRenderData }) {
+  return (
+    <div style={{ ...PAPER, fontFamily: 'Georgia, serif', padding: 28, border: '1px solid #d1d5db' }}>
+      <div style={{ textAlign: 'center', marginBottom: 18 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: 2, borderTop: '3px double #1f2937', borderBottom: '3px double #1f2937', padding: '8px 0' }}>
+          RECIBO DE PRESTAÇÃO DE SERVIÇOS
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 700, marginTop: 10 }}>{brl(d.total)}</div>
+      </div>
+      <p style={{ fontSize: 13, lineHeight: 1.8, margin: '0 0 10px', textAlign: 'justify' }}>
+        Recebi de <b>{d.payerName || '—'}</b>
+        {d.payerDoc ? ` (${d.payerDoc})` : ''} a importância de <b>{brl(d.total)}</b> (
+        {valorPorExtenso(d.total)}), referente aos serviços de{' '}
+        <b>{d.refersTo || '—'}</b>, pelos quais dou plena e total quitação.
+      </p>
+      <ItemsTable items={d.items} />
+      <p style={{ fontSize: 13, margin: '16px 0 0' }}>
+        {d.city || '—'}, {longDate(d.date)}.
+      </p>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ borderTop: '1px solid #1f2937', width: 230, margin: '40px auto 0', paddingTop: 4, fontSize: 11 }}>
+          {d.issuerName || 'Prestador(a) de serviços'}
+          {d.issuerDoc && <div style={{ color: '#6b7280' }}>{d.issuerDoc}</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- 12. Recibo de corrida (táxi) ---------- */
+function Taxi({ data: d }: { data: ReceiptRenderData }) {
+  const checker: CSSProperties = {
+    height: 12,
+    backgroundColor: '#f5c518',
+    backgroundImage:
+      'linear-gradient(45deg, #17181c 25%, transparent 25%, transparent 75%, #17181c 75%), ' +
+      'linear-gradient(45deg, #17181c 25%, transparent 25%, transparent 75%, #17181c 75%)',
+    backgroundSize: '12px 12px',
+    backgroundPosition: '0 0, 6px 6px',
+  }
+  return (
+    <div
+      style={{
+        width: 300,
+        boxSizing: 'border-box',
+        background: '#fffdf5',
+        color: '#17181c',
+        fontFamily: "'Arial Narrow', 'Helvetica Neue', Arial, sans-serif",
+        border: '1px solid #d6d3c4',
+      }}
+    >
+      <div style={checker} />
+      <div style={{ padding: '14px 18px' }}>
+        <div style={{ textAlign: 'center', fontSize: 16, fontWeight: 700, letterSpacing: 2 }}>
+          RECIBO DE TÁXI
+        </div>
+        <div style={{ textAlign: 'center', fontSize: 26, fontWeight: 700, margin: '8px 0 12px' }}>
+          {brl(d.total)}
+        </div>
+        <div style={{ fontSize: 12, lineHeight: 1.9 }}>
+          <div>
+            <b>Passageiro:</b> {d.payerName || '—'}
+          </div>
+          <div>
+            <b>Percurso:</b> {d.refersTo || '—'}
+          </div>
+          <div>
+            <b>Data:</b> {shortDate(d.date)}
+            {d.city ? ` · ${d.city}` : ''}
+          </div>
+        </div>
+        <div style={{ borderTop: '1px dashed #9ca3af', margin: '12px 0 0' }} />
+        <div style={{ borderTop: '1px solid #17181c', width: 190, margin: '34px auto 0', paddingTop: 4, fontSize: 11, textAlign: 'center' }}>
+          {d.issuerName || 'Motorista'}
+          {d.issuerDoc && <div style={{ color: '#6b7280' }}>{d.issuerDoc}</div>}
+        </div>
+      </div>
+      <div style={checker} />
+    </div>
+  )
+}
+
+/* ---------- 13. Bloco comercial (canhoto) ---------- */
+function Canhoto({ data: d }: { data: ReceiptRenderData }) {
+  // número determinístico do bloco a partir da data e do valor
+  const numero = `${d.date.slice(8, 10)}${d.date.slice(5, 7)}${String((Math.round(d.total * 100) % 90) + 10)}`
+  const linha: CSSProperties = { borderBottom: '1px solid #9a9484', minHeight: 20, fontSize: 13 }
+  return (
+    <div
+      style={{
+        ...PAPER,
+        background: '#f7f3e8',
+        color: '#3b382f',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        borderTop: '2px dotted #b7b1a0',
+        border: '1px solid #d8d2c0',
+        padding: '18px 22px 24px',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>RECIBO</div>
+          <div style={{ fontSize: 11, color: '#8a8471' }}>Nº {numero}</div>
+        </div>
+        <div style={{ border: '1.5px solid #3b382f', padding: '6px 12px', fontSize: 16, fontWeight: 700 }}>
+          {brl(d.total)}
+        </div>
+      </div>
+      <div style={{ display: 'grid', rowGap: 12 }}>
+        <div>
+          <span style={{ fontSize: 10, color: '#8a8471' }}>RECEBI(EMOS) DE</span>
+          <div style={linha}>
+            {d.payerName || ''}
+            {d.payerDoc ? ` — ${d.payerDoc}` : ''}
+          </div>
+        </div>
+        <div>
+          <span style={{ fontSize: 10, color: '#8a8471' }}>A QUANTIA DE</span>
+          <div style={linha}>{valorPorExtenso(d.total)}</div>
+        </div>
+        <div>
+          <span style={{ fontSize: 10, color: '#8a8471' }}>REFERENTE A</span>
+          <div style={linha}>{d.refersTo || ''}</div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 26 }}>
+        <div style={{ fontSize: 12 }}>
+          {d.city || '—'}, {shortDate(d.date)}
+        </div>
+        <div style={{ borderTop: '1px solid #3b382f', width: 150, paddingTop: 4, fontSize: 10, textAlign: 'center' }}>
+          {d.issuerName || 'Assinatura'}
+          {d.issuerDoc && <div style={{ color: '#8a8471' }}>{d.issuerDoc}</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- 14. Manuscrito (preenchido à caneta) ---------- */
+const INK = '#1e3a8a'
+const HAND: CSSProperties = {
+  fontFamily: "'Segoe Script', 'Bradley Hand', 'Comic Sans MS', cursive",
+  color: INK,
+}
+function Manuscrito({ data: d }: { data: ReceiptRenderData }) {
+  return (
+    <div
+      style={{
+        ...PAPER,
+        padding: '26px 24px',
+        background: 'repeating-linear-gradient(#fffef9, #fffef9 29px, #d8e4f0 30px)',
+        border: '1px solid #cbd5e1',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        color: '#374151',
+      }}
+    >
+      <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: 3, marginBottom: 16 }}>
+        RECIBO{' '}
+        <span style={{ ...HAND, fontSize: 17, transform: 'rotate(-1deg)', display: 'inline-block' }}>
+          {brl(d.total)}
+        </span>
+      </div>
+      <div style={{ fontSize: 12, lineHeight: '30px' }}>
+        Recebi de{' '}
+        <span style={{ ...HAND, fontSize: 15, transform: 'rotate(0.6deg)', display: 'inline-block' }}>
+          {d.payerName || '—'}
+        </span>{' '}
+        a quantia de{' '}
+        <span style={{ ...HAND, fontSize: 14, transform: 'rotate(-0.5deg)', display: 'inline-block' }}>
+          {valorPorExtenso(d.total)}
+        </span>
+        {d.refersTo && (
+          <>
+            {' '}
+            referente a{' '}
+            <span style={{ ...HAND, fontSize: 14, transform: 'rotate(0.4deg)', display: 'inline-block' }}>
+              {d.refersTo}
+            </span>
+          </>
+        )}
+        .
+      </div>
+      <div style={{ fontSize: 12, lineHeight: '30px', marginTop: 8 }}>
+        <span style={{ ...HAND, fontSize: 14 }}>
+          {d.city || '—'}, {shortDate(d.date)}
+        </span>
+      </div>
+      <div style={{ marginTop: 34 }}>
+        <div style={{ ...HAND, fontSize: 18, transform: 'rotate(-2deg)', display: 'inline-block' }}>
+          {d.issuerName || 'Assinatura'}
+        </div>
+        <div style={{ borderTop: '1px solid #374151', width: 220, paddingTop: 3, fontSize: 10 }}>
+          {d.issuerDoc || 'assinatura'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- 15. Recibo simples (pautado) ---------- */
+function Pautado({ data: d }: { data: ReceiptRenderData }) {
+  return (
+    <div
+      style={{
+        ...PAPER,
+        padding: '26px 26px 30px',
+        background: 'repeating-linear-gradient(#ffffff, #ffffff 25px, #e5e7eb 26px)',
+        fontFamily: 'Helvetica, Arial, sans-serif',
+        color: '#111827',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+        <span style={{ fontSize: 17, fontWeight: 700, borderBottom: '3px solid #111827', paddingBottom: 2 }}>
+          Recibo
+        </span>
+        <span
+          style={{
+            border: `2px solid ${INK}`,
+            borderRadius: 6,
+            color: INK,
+            fontWeight: 700,
+            fontSize: 15,
+            padding: '4px 10px',
+            transform: 'rotate(-1.5deg)',
+          }}
+        >
+          {brl(d.total)}
+        </span>
+      </div>
+      <p style={{ fontSize: 13, lineHeight: '26px', margin: 0 }}>{reciboProse(d)}</p>
+      <p style={{ fontSize: 12, lineHeight: '26px', margin: '8px 0 0', color: '#6b7280' }}>
+        {d.city || '—'}, {shortDate(d.date)}.
+      </p>
+      <Signature d={d} />
+    </div>
+  )
+}
+
 /* ---------- registry ---------- */
 
 export interface TemplateDef {
@@ -378,4 +617,9 @@ export const RECEIPT_TEMPLATES: TemplateDef[] = [
   { key: 'comanda', label: 'Comanda', Component: Comanda },
   { key: 'itens-moderno', label: 'Itens moderno', Component: ItensModerno },
   { key: 'itens-colorido', label: 'Itens colorido', Component: ItensColorido },
+  { key: 'servico', label: 'Serviços', Component: Servico },
+  { key: 'taxi', label: 'Táxi', Component: Taxi },
+  { key: 'canhoto', label: 'Bloco comercial', Component: Canhoto },
+  { key: 'manuscrito', label: 'Manuscrito', Component: Manuscrito },
+  { key: 'pautado', label: 'Pautado', Component: Pautado },
 ]

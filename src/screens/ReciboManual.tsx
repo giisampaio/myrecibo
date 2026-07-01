@@ -231,7 +231,7 @@ export default function ReciboManual() {
         <input
           value={refersTo}
           onChange={(e) => setRefersTo(e.target.value)}
-          placeholder="Ex.: transporte aeroporto-hotel"
+          placeholder="Ex.: corrida centro-aeroporto, diária de limpeza"
           className="input"
         />
       </Field>
