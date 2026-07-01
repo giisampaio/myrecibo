@@ -1,26 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import {
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Table,
-  Settings,
-  Square,
-  CheckSquare,
-} from 'lucide-react'
+import { FileText, Table, Settings, Square, CheckSquare } from 'lucide-react'
 import { db } from '../db/db'
 import { monthRange, setReimbursement } from '../db/repository'
-import { exportReceiptsPDF, exportRelatorioXLSX } from '../lib/exporters'
 import { getProfile } from '../lib/profile'
-import { formatBRL, formatDateBR } from '../lib/format'
-import {
-  CATEGORY_LABELS,
-  REIMBURSEMENT_LABELS,
-  type Expense,
-  type ReimbursementStatus,
-} from '../types'
+import { formatBRL, formatDateBR, parseBRL } from '../lib/format'
+import Toast, { type ToastData } from '../components/Toast'
+import MonthNav from '../components/MonthNav'
+import SegmentedTabs from '../components/SegmentedTabs'
+import StatCard from '../components/StatCard'
+import StatusBadge from '../components/StatusBadge'
+import { CATEGORY_LABELS, type Expense, type ReimbursementStatus } from '../types'
 import AppShell from '../components/AppShell'
 
 type Tab = 'cartao' | 'reembolso'
@@ -31,7 +22,23 @@ export default function Relatorio() {
   const [tab, setTab] = useState<Tab>('cartao')
   const [busy, setBusy] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [toast, setToast] = useState<ToastData | null>(null)
+  const [adiantamento, setAdiantamento] = useState('')
   const [start, end] = useMemo(() => monthRange(ym.year, ym.month0), [ym])
+
+  // Adiantamento lembrado por mês/aba (só entra na planilha)
+  const advKey = `myrecibo.adiantamento.${start}.${tab}`
+  useEffect(() => {
+    setAdiantamento(localStorage.getItem(advKey) ?? '')
+  }, [advKey])
+  function onAdiantamento(v: string) {
+    setAdiantamento(v)
+    try {
+      localStorage.setItem(advKey, v)
+    } catch {
+      /* quota */
+    }
+  }
 
   const expenses = useLiveQuery(
     () =>
@@ -78,15 +85,24 @@ export default function Relatorio() {
   async function genPdf(arr: Expense[], titulo: string) {
     setBusy('pdf')
     try {
+      // Import dinâmico: pdf-lib só carrega quando o usuário gera
+      const { exportReceiptsPDF } = await import('../lib/exporters')
       await exportReceiptsPDF(arr, periodo, titulo)
+      setToast({ message: 'PDF gerado', kind: 'success' })
+    } catch {
+      setToast({ message: 'Não foi possível gerar o PDF. Tente de novo.', kind: 'error' })
     } finally {
       setBusy(null)
     }
   }
-  function genXlsx(arr: Expense[], tipo: string) {
+  async function genXlsx(arr: Expense[], tipo: string) {
     setBusy('xlsx')
     try {
-      exportRelatorioXLSX(arr, getProfile(), periodo, tipo)
+      const { exportRelatorioXLSX } = await import('../lib/exporters')
+      await exportRelatorioXLSX(arr, getProfile(), periodo, tipo, parseBRL(adiantamento) || 0)
+      setToast({ message: 'Planilha gerada', kind: 'success' })
+    } catch {
+      setToast({ message: 'Não foi possível gerar a planilha. Tente de novo.', kind: 'error' })
     } finally {
       setBusy(null)
     }
@@ -108,33 +124,25 @@ export default function Relatorio() {
         </Link>
       }
     >
-      <div className="mb-4 flex items-center justify-between">
-        <button onClick={() => shift(-1)} className="icon-btn -ml-2.5" aria-label="Mês anterior">
-          <ChevronLeft size={20} />
-        </button>
-        <span className="font-medium capitalize">{monthLabel}</span>
-        <button onClick={() => shift(1)} className="icon-btn -mr-2.5" aria-label="Próximo mês">
-          <ChevronRight size={20} />
-        </button>
-      </div>
+      <MonthNav label={monthLabel} onPrev={() => shift(-1)} onNext={() => shift(1)} />
 
-      {/* Abas */}
-      <div className="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-[var(--surface-2)] p-1">
-        <TabBtn active={tab === 'cartao'} onClick={() => setTab('cartao')}>
-          Cartão
-        </TabBtn>
-        <TabBtn active={tab === 'reembolso'} onClick={() => setTab('reembolso')}>
-          Reembolso
-        </TabBtn>
-      </div>
+      <SegmentedTabs
+        options={[
+          { key: 'cartao', label: 'Cartão' },
+          { key: 'reembolso', label: 'Reembolso' },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
 
       {tab === 'cartao' ? (
-        <>
-          <div className="mb-5 rounded-xl bg-[var(--surface-2)] p-4">
-            <div className="text-xs text-[var(--text-muted)]">{corp.length} despesas no cartão</div>
-            <div className="mt-0.5 text-2xl font-medium">{formatBRL(sum(corp))}</div>
-          </div>
-        </>
+        <div className="mb-5">
+          <StatCard
+            big
+            label={`${corp.length} despesa${corp.length === 1 ? '' : 's'} no cartão`}
+            value={formatBRL(sum(corp))}
+          />
+        </div>
       ) : (
         <>
           <ul className="mb-4 space-y-2">
@@ -156,10 +164,13 @@ export default function Relatorio() {
                         {e.vendor || CATEGORY_LABELS[e.category]}
                       </div>
                       <div className="truncate text-xs text-[var(--text-muted)]">
-                        {formatDateBR(e.date)} · {statusLabel(e.reimbursement)}
+                        {formatDateBR(e.date)}
                       </div>
                     </div>
-                    <div className="text-right font-medium">{formatBRL(e.amount)}</div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="font-medium">{formatBRL(e.amount)}</span>
+                      <StatusBadge status={e.reimbursement === 'na' ? 'pendente' : e.reimbursement} />
+                    </div>
                   </button>
                 </li>
               )
@@ -174,7 +185,7 @@ export default function Relatorio() {
           {pess.length > 0 && (
             <div className="mb-5 rounded-xl bg-[var(--surface-2)] p-4">
               <div className="text-xs text-[var(--text-muted)]">
-                {selected.size} selecionada(s) para reembolso
+                {selected.size} selecionada{selected.size === 1 ? '' : 's'} para reembolso
               </div>
               <div className="mt-0.5 text-2xl font-medium">{formatBRL(sum(selectedList))}</div>
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -198,6 +209,23 @@ export default function Relatorio() {
         </>
       )}
 
+      <label className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <span className="text-sm">
+          <span className="block font-medium">Adiantamento</span>
+          <span className="block text-xs text-[var(--text-muted)]">Entra no SALDO da planilha</span>
+        </span>
+        <span className="flex items-baseline gap-1">
+          <span className="text-sm text-[var(--text-muted)]">R$</span>
+          <input
+            inputMode="decimal"
+            value={adiantamento}
+            onChange={(e) => onAdiantamento(e.target.value)}
+            placeholder="0,00"
+            className="input w-28 text-right"
+          />
+        </span>
+      </label>
+
       <ExportRow
         Icon={FileText}
         title="PDF dos comprovantes"
@@ -214,35 +242,9 @@ export default function Relatorio() {
         disabled={busy !== null || arr.length === 0}
         onClick={() => genXlsx(arr, tipo)}
       />
+
+      <Toast toast={toast} onDone={() => setToast(null)} />
     </AppShell>
-  )
-}
-
-function statusLabel(s: ReimbursementStatus): string {
-  return REIMBURSEMENT_LABELS[s === 'na' ? 'pendente' : s]
-}
-
-function TabBtn({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="press rounded-lg py-2 text-sm font-medium"
-      style={{
-        backgroundColor: active ? 'var(--surface)' : 'transparent',
-        color: active ? 'var(--text)' : 'var(--text-muted)',
-        boxShadow: active ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-      }}
-    >
-      {children}
-    </button>
   )
 }
 

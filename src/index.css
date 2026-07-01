@@ -17,6 +17,11 @@
   --danger: #b91c1c;
   --radius: 12px;
 
+  /* Status de reembolso (única fonte de cor em todo o app) */
+  --status-pendente: #b45309;
+  --status-solicitado: #1d4ed8;
+  --status-pago: #15803d;
+
   /* Grid de 8pt + Apple HIG (tokens, não números avulsos) */
   --tap: 44px; /* alvo de toque mínimo (HIG) */
   --screen-x: 16px; /* margem lateral padrão das telas */
@@ -37,6 +42,10 @@
     --ink-soft: #e4e4e7;
     --ink-contrast: #0b0b0c;
     --danger: #f87171;
+
+    --status-pendente: #f59e0b;
+    --status-solicitado: #60a5fa;
+    --status-pago: #4ade80;
   }
 }
 

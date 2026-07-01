@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import {
@@ -9,6 +9,7 @@ import {
   User,
   ChevronDown,
   Delete,
+  Loader2,
   Utensils,
   BedDouble,
   ShoppingBag,
@@ -21,10 +22,12 @@ import {
 } from 'lucide-react'
 import { addExpense } from '../db/repository'
 import { readReceipt } from '../lib/ocr'
-import { takePendingPhoto } from '../lib/pendingPhoto'
+import { peekPendingPhoto, clearPendingPhoto } from '../lib/pendingPhoto'
 import { haptic } from '../lib/haptics'
 import { formatBRL, formatCentsBR, todayISO, formatDateBR } from '../lib/format'
 import { CATEGORY_LABELS, type Category, type PaymentType } from '../types'
+import Field from '../components/Field'
+import PayToggle from '../components/PayToggle'
 
 type Step = 'valor' | 'categoria' | 'pagamento'
 
@@ -55,6 +58,7 @@ export default function NovaDespesa() {
   const [skipCategory, setSkipCategory] = useState(false)
   const [vendor, setVendor] = useState('')
   const [description, setDescription] = useState('')
+  const [invoiceNumber, setInvoiceNumber] = useState('')
   const [advanced, setAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -68,11 +72,25 @@ export default function NovaDespesa() {
   const [dir, setDir] = useState(1)
   const step = steps[Math.min(stepIdx, steps.length - 1)]
 
+  // O usuário nunca espera o OCR: se ele já digitou/avançou, a leitura não
+  // sobrescreve nada. Refs guardam o estado mais recente para o callback async.
+  const touchedRef = useRef(false) // usuário mexeu no valor
+  const stepIdxRef = useRef(0)
+  stepIdxRef.current = stepIdx
+
   useEffect(() => {
-    const scanned = takePendingPhoto()
+    // Espia (não consome): sair do wizard sem salvar preserva a foto.
+    const scanned = peekPendingPhoto()
     if (scanned) processPhoto(scanned)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Libera o object URL anterior quando trocar/desmontar
+  useEffect(() => {
+    return () => {
+      if (photoUrl) URL.revokeObjectURL(photoUrl)
+    }
+  }, [photoUrl])
 
   async function processPhoto(file: Blob) {
     setPhoto(file)
@@ -80,11 +98,12 @@ export default function NovaDespesa() {
     setReading(true)
     try {
       const guess = await readReceipt(file)
-      if (guess.amount != null) setCents(Math.round(guess.amount * 100))
+      if (guess.amount != null && !touchedRef.current) setCents(Math.round(guess.amount * 100))
       setCandidates(guess.candidates)
       if (guess.date) setDate(guess.date)
-      if (guess.category) {
-        setCategory(guess.category) // identificou: pula o passo de categoria
+      // Só pula o passo de categoria se o usuário ainda está no valor
+      if (guess.category && stepIdxRef.current === 0) {
+        setCategory((c) => c ?? guess.category!)
         setSkipCategory(true)
       }
     } catch {
@@ -104,10 +123,16 @@ export default function NovaDespesa() {
   }
 
   function pushDigit(d: number) {
+    touchedRef.current = true
     setCents((c) => Math.min(c * 10 + d, MAX_CENTS))
   }
   function popDigit() {
+    touchedRef.current = true
     setCents((c) => Math.floor(c / 10))
+  }
+  function pickCents(c: number) {
+    touchedRef.current = true
+    setCents(c)
   }
 
   async function onSave() {
@@ -120,9 +145,11 @@ export default function NovaDespesa() {
       category,
       vendor: vendor.trim(),
       description: description.trim(),
+      invoiceNumber: invoiceNumber.trim() || undefined,
       source: photo ? 'ocr' : 'manual',
       photo,
     })
+    clearPendingPhoto()
     haptic('success')
     setSaved(true)
     setTimeout(() => navigate('/despesas', { replace: true }), 800)
@@ -180,7 +207,7 @@ export default function NovaDespesa() {
                 onPick={() => (photoUrl ? setLightbox(true) : navigate('/'))}
                 onDigit={pushDigit}
                 onBackspace={popDigit}
-                onSetCents={setCents}
+                onSetCents={pickCents}
                 onNext={() => go(1)}
               />
             )}
@@ -207,6 +234,8 @@ export default function NovaDespesa() {
                 setVendor={setVendor}
                 description={description}
                 setDescription={setDescription}
+                invoiceNumber={invoiceNumber}
+                setInvoiceNumber={setInvoiceNumber}
                 saving={saving}
                 onSave={onSave}
               />
@@ -283,7 +312,7 @@ function StepValor({
       <div className="flex flex-1 flex-col items-center justify-center">
         <button
           onClick={onPick}
-          className="mb-5 flex h-16 w-20 items-center justify-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)]"
+          className="relative mb-5 flex h-16 w-20 items-center justify-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)]"
           aria-label="Trocar foto"
         >
           {photoUrl ? (
@@ -291,10 +320,15 @@ function StepValor({
           ) : (
             <ImageIcon size={24} className="text-[var(--text-muted)]" />
           )}
+          {reading && (
+            <span className="absolute inset-0 flex items-center justify-center bg-black/35">
+              <Loader2 size={20} className="animate-spin text-white" />
+            </span>
+          )}
         </button>
 
         <p className="mb-2 text-sm text-[var(--text-muted)]">
-          {reading ? 'Lendo o comprovante…' : 'Confirme o valor'}
+          {reading ? 'Lendo o comprovante — pode digitar' : 'Confirme o valor'}
         </p>
 
         <div className="flex items-baseline gap-1.5">
@@ -431,6 +465,8 @@ function StepPagamento({
   setVendor,
   description,
   setDescription,
+  invoiceNumber,
+  setInvoiceNumber,
   saving,
   onSave,
 }: {
@@ -446,6 +482,8 @@ function StepPagamento({
   setVendor: (v: string) => void
   description: string
   setDescription: (v: string) => void
+  invoiceNumber: string
+  setInvoiceNumber: (v: string) => void
   saving: boolean
   onSave: () => void
 }) {
@@ -455,13 +493,13 @@ function StepPagamento({
         <p className="mb-6 mt-2 text-center text-base font-medium">Como você pagou?</p>
 
         <div className="grid grid-cols-2 gap-3">
-          <PayCard
+          <PayToggle
             active={paymentType === 'corporativo'}
             onClick={() => setPaymentType('corporativo')}
             Icon={Building2}
             label="Corporativo"
           />
-          <PayCard
+          <PayToggle
             active={paymentType === 'pessoal'}
             onClick={() => setPaymentType('pessoal')}
             Icon={User}
@@ -493,7 +531,7 @@ function StepPagamento({
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <div className="space-y-3 pt-3">
+              <div className="pt-3">
                 <Field label="Categoria">
                   <select
                     value={category ?? 'outros'}
@@ -518,6 +556,14 @@ function StepPagamento({
                     className="input"
                   />
                 </Field>
+                <Field label="Nº da nota (NF)">
+                  <input
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    placeholder="Opcional"
+                    className="input"
+                  />
+                </Field>
                 <Field label="Observação">
                   <input
                     value={description}
@@ -539,45 +585,3 @@ function StepPagamento({
   )
 }
 
-function PayCard({
-  active,
-  onClick,
-  Icon,
-  label,
-}: {
-  active: boolean
-  onClick: () => void
-  Icon: LucideIcon
-  label: string
-}) {
-  return (
-    <button
-      onClick={() => {
-        haptic('light')
-        onClick()
-      }}
-      className="press relative flex h-24 flex-col items-center justify-center gap-2 rounded-xl border transition-colors"
-      style={{
-        borderColor: active ? 'var(--ink)' : 'var(--border)',
-        backgroundColor: active ? 'var(--surface-2)' : 'var(--surface)',
-      }}
-    >
-      {active && (
-        <span className="absolute right-2 top-2 text-[var(--ink)]">
-          <Check size={16} />
-        </span>
-      )}
-      <Icon size={26} className="text-[var(--text)]" />
-      <span className="text-sm font-medium text-[var(--text)]">{label}</span>
-    </button>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs text-[var(--text-muted)]">{label}</span>
-      {children}
-    </label>
-  )
-}

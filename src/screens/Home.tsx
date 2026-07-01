@@ -1,22 +1,30 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ChevronLeft, ChevronRight, Plus, Camera, PenLine, Receipt } from 'lucide-react'
+import { Plus, Camera, PenLine, Search, ImageOff, X } from 'lucide-react'
 import { db } from '../db/db'
 import { monthRange } from '../db/repository'
 import { formatBRL, formatDateBR } from '../lib/format'
-import {
-  CATEGORY_LABELS,
-  PAYMENT_LABELS,
-  REIMBURSEMENT_LABELS,
-  type Expense,
-  type ReimbursementStatus,
-} from '../types'
+import { CATEGORY_LABELS, PAYMENT_LABELS, type Expense } from '../types'
 import AppShell from '../components/AppShell'
+import MonthNav from '../components/MonthNav'
+import StatCard from '../components/StatCard'
+import StatusBadge from '../components/StatusBadge'
+
+type Filter = 'todas' | 'corporativo' | 'pessoal' | 'sem-foto'
+
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'todas', label: 'Todas' },
+  { key: 'corporativo', label: 'Corporativo' },
+  { key: 'pessoal', label: 'Pessoal' },
+  { key: 'sem-foto', label: 'Sem foto' },
+]
 
 export default function Home() {
   const now = new Date()
   const [ym, setYm] = useState({ year: now.getFullYear(), month0: now.getMonth() })
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<Filter>('todas')
   const [start, end] = useMemo(() => monthRange(ym.year, ym.month0), [ym])
 
   const expenses = useLiveQuery(
@@ -37,6 +45,22 @@ export default function Home() {
     return { corp, pess, total: corp + pess, count: list.length }
   }, [expenses])
 
+  const visible = useMemo(() => {
+    let list = expenses ?? []
+    if (filter === 'corporativo' || filter === 'pessoal')
+      list = list.filter((e) => e.paymentType === filter)
+    if (filter === 'sem-foto') list = list.filter((e) => !e.photo)
+    const q = query.trim().toLowerCase()
+    if (q)
+      list = list.filter(
+        (e) =>
+          e.vendor.toLowerCase().includes(q) ||
+          e.description.toLowerCase().includes(q) ||
+          CATEGORY_LABELS[e.category].toLowerCase().includes(q),
+      )
+    return list
+  }, [expenses, filter, query])
+
   const monthLabel = new Date(ym.year, ym.month0).toLocaleDateString('pt-BR', {
     month: 'long',
     year: 'numeric',
@@ -47,34 +71,66 @@ export default function Home() {
     setYm({ year: d.getFullYear(), month0: d.getMonth() })
   }
 
+  const filtering = query.trim() !== '' || filter !== 'todas'
+
   return (
     <AppShell title="Despesas">
-      <div className="mb-5 flex items-center justify-between">
-        <button onClick={() => shift(-1)} className="icon-btn -ml-2.5" aria-label="Mês anterior">
-          <ChevronLeft size={20} />
-        </button>
-        <span className="font-medium capitalize">{monthLabel}</span>
-        <button onClick={() => shift(1)} className="icon-btn -mr-2.5" aria-label="Próximo mês">
-          <ChevronRight size={20} />
-        </button>
-      </div>
+      <MonthNav label={monthLabel} onPrev={() => shift(-1)} onNext={() => shift(1)} />
 
       <div className="mb-3 grid grid-cols-2 gap-3">
-        <Stat label="Corporativo" value={totals.corp} />
-        <Stat label="Pessoal" value={totals.pess} />
+        <StatCard label="Corporativo" value={formatBRL(totals.corp)} />
+        <StatCard label="Pessoal" value={formatBRL(totals.pess)} />
       </div>
-      <div className="mb-6 rounded-xl bg-[var(--surface-2)] p-4">
-        <div className="text-xs text-[var(--text-muted)]">Total do mês · {totals.count} despesas</div>
-        <div className="mt-0.5 text-2xl font-medium">{formatBRL(totals.total)}</div>
+      <div className="mb-5">
+        <StatCard
+          big
+          label={`Total do mês · ${totals.count} despesa${totals.count === 1 ? '' : 's'}`}
+          value={formatBRL(totals.total)}
+        />
+      </div>
+
+      {/* Busca + filtros */}
+      <div className="mb-2 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3">
+        <Search size={18} className="shrink-0 text-[var(--text-muted)]" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar estabelecimento, categoria…"
+          className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]"
+        />
+        {query && (
+          <button onClick={() => setQuery('')} className="icon-btn -mr-2" aria-label="Limpar busca">
+            <X size={16} />
+          </button>
+        )}
+      </div>
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+        {FILTERS.map((f) => {
+          const active = filter === f.key
+          return (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className="press shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+              style={{
+                borderColor: active ? 'var(--ink)' : 'var(--border)',
+                backgroundColor: active ? 'var(--surface-2)' : 'transparent',
+                color: active ? 'var(--text)' : 'var(--text-muted)',
+              }}
+            >
+              {f.label}
+            </button>
+          )
+        })}
       </div>
 
       <ul className="space-y-2">
-        {(expenses ?? []).map((e) => (
+        {visible.map((e) => (
           <ExpenseRow key={e.id} expense={e} />
         ))}
-        {expenses && expenses.length === 0 && (
+        {expenses && visible.length === 0 && (
           <li className="py-16 text-center text-sm text-[var(--text-muted)]">
-            Nenhuma despesa neste mês.
+            {filtering ? 'Nada encontrado com esse filtro.' : 'Nenhuma despesa neste mês.'}
           </li>
         )}
       </ul>
@@ -93,17 +149,9 @@ export default function Home() {
   )
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl bg-[var(--surface-2)] p-3">
-      <div className="text-xs text-[var(--text-muted)]">{label}</div>
-      <div className="mt-0.5 text-lg font-medium">{formatBRL(value)}</div>
-    </div>
-  )
-}
-
 function ExpenseRow({ expense: e }: { expense: Expense }) {
-  const Icon = e.photo ? Camera : e.source === 'recibo' ? PenLine : Receipt
+  const noPhoto = !e.photo
+  const Icon = noPhoto ? ImageOff : e.source === 'recibo' ? PenLine : Camera
   return (
     <li>
       <Link
@@ -111,7 +159,10 @@ function ExpenseRow({ expense: e }: { expense: Expense }) {
         className="press flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3"
       >
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)]">
-          <Icon size={18} className="text-[var(--text-muted)]" />
+          <Icon
+            size={18}
+            className={noPhoto ? 'text-[var(--status-pendente)]' : 'text-[var(--text-muted)]'}
+          />
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium">{e.vendor || CATEGORY_LABELS[e.category]}</div>
@@ -119,33 +170,14 @@ function ExpenseRow({ expense: e }: { expense: Expense }) {
             {e.vendor
               ? `${formatDateBR(e.date)} · ${CATEGORY_LABELS[e.category]} · ${PAYMENT_LABELS[e.paymentType]}`
               : `${formatDateBR(e.date)} · ${PAYMENT_LABELS[e.paymentType]}`}
+            {noPhoto && <span className="text-[var(--status-pendente)]"> · sem comprovante</span>}
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span className="font-medium">{formatBRL(e.amount)}</span>
-          {e.paymentType === 'pessoal' && e.reimbursement !== 'na' && (
-            <ReimbBadge status={e.reimbursement} />
-          )}
+          {e.paymentType === 'pessoal' && <StatusBadge status={e.reimbursement} />}
         </div>
       </Link>
     </li>
-  )
-}
-
-const REIMB_COLOR: Record<ReimbursementStatus, string> = {
-  na: '',
-  pendente: '#b45309',
-  solicitado: '#1d4ed8',
-  pago: '#15803d',
-}
-
-function ReimbBadge({ status }: { status: ReimbursementStatus }) {
-  return (
-    <span
-      className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-      style={{ backgroundColor: `${REIMB_COLOR[status]}1a`, color: REIMB_COLOR[status] }}
-    >
-      {REIMBURSEMENT_LABELS[status]}
-    </span>
   )
 }

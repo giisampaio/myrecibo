@@ -32,6 +32,8 @@ export interface Expense {
   category: Category
   vendor: string
   description: string
+  /** Nº da nota fiscal/cupom (opcional; vai para a coluna Nº NF do relatório) */
+  invoiceNumber?: string
   source: ExpenseSource
   reimbursement: ReimbursementStatus
   /** Foto do comprovante guardada localmente (Blob no IndexedDB) */

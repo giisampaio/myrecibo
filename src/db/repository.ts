@@ -26,6 +26,7 @@ export interface NewExpenseInput {
   category: Category
   vendor: string
   description: string
+  invoiceNumber?: string
   source: ExpenseSource
   photo?: Blob
 }
@@ -41,6 +42,7 @@ export async function addExpense(input: NewExpenseInput): Promise<string> {
     category: input.category,
     vendor: input.vendor,
     description: input.description,
+    invoiceNumber: input.invoiceNumber,
     source: input.source,
     reimbursement: input.paymentType === 'pessoal' ? 'pendente' : 'na',
     photo: input.photo,

@@ -1,5 +1,3 @@
-import { PDFDocument } from 'pdf-lib'
-
 /** Rasteriza um nó (modelo de recibo) em PNG de alta resolução. */
 export async function nodeToImage(node: HTMLElement, scale = 2.5): Promise<Blob> {
   const { default: html2canvas } = await import('html2canvas-pro')
@@ -15,6 +13,7 @@ export async function nodeToImage(node: HTMLElement, scale = 2.5): Promise<Blob>
 
 /** Embute a imagem do recibo numa página A4 (para baixar em PDF). */
 export async function imageToPdf(blob: Blob): Promise<Blob> {
+  const { PDFDocument } = await import('pdf-lib')
   const pdf = await PDFDocument.create()
   const bytes = new Uint8Array(await blob.arrayBuffer())
   const img = await pdf.embedPng(bytes)

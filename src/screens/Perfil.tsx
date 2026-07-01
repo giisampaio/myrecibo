@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getProfile, saveProfile, type Profile } from '../lib/profile'
 import AppShell from '../components/AppShell'
+import Field from '../components/Field'
 
 export default function Perfil() {
   const navigate = useNavigate()
@@ -42,14 +43,5 @@ export default function Perfil() {
         Salvar perfil
       </button>
     </AppShell>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="mb-3 block">
-      <span className="mb-1 block text-xs font-medium text-[var(--text-muted)]">{label}</span>
-      {children}
-    </label>
   )
 }

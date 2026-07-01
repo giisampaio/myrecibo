@@ -14,6 +14,7 @@ import {
   type ReceiptTemplate,
 } from '../types'
 import AppShell from '../components/AppShell'
+import Field from '../components/Field'
 
 export default function ReciboManual() {
   const navigate = useNavigate()
@@ -338,13 +339,4 @@ function ReceiptCanvas({ children, fitWidth, cap }: { children: ReactNode; fitWi
 
 function Label({ children }: { children: ReactNode }) {
   return <div className="mb-2 text-xs font-medium text-[var(--text-muted)]">{children}</div>
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="mb-3 block">
-      <span className="mb-1 block text-xs font-medium text-[var(--text-muted)]">{label}</span>
-      {children}
-    </label>
-  )
 }

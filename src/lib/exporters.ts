@@ -13,6 +13,24 @@ function download(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+/**
+ * Entrega o arquivo do jeito certo por plataforma: no iPhone (PWA) abre o
+ * Share Sheet nativo (WhatsApp/Mail/Arquivos); no desktop baixa direto.
+ */
+async function deliver(blob: Blob, filename: string): Promise<void> {
+  const file = new File([blob], filename, { type: blob.type })
+  if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] })
+      return
+    } catch (err) {
+      // Cancelar o share não é erro; qualquer outra falha cai no download
+      if (err instanceof DOMException && err.name === 'AbortError') return
+    }
+  }
+  download(blob, filename)
+}
+
 /** Gera um PDF com capa-resumo e uma página por comprovante. */
 export async function exportReceiptsPDF(expenses: Expense[], monthLabel: string, titulo?: string) {
   const pdf = await PDFDocument.create()
@@ -32,8 +50,9 @@ export async function exportReceiptsPDF(expenses: Expense[], monthLabel: string,
 
   let y = height - 130
   cover.drawText('Data', { x: 40, y, size: 9, font: fontBold })
-  cover.drawText('Estabelecimento', { x: 110, y, size: 9, font: fontBold })
-  cover.drawText('Categoria', { x: 320, y, size: 9, font: fontBold })
+  cover.drawText('Nº NF', { x: 95, y, size: 9, font: fontBold })
+  cover.drawText('Estabelecimento', { x: 150, y, size: 9, font: fontBold })
+  cover.drawText('Categoria', { x: 350, y, size: 9, font: fontBold })
   cover.drawText('Valor', { x: 500, y, size: 9, font: fontBold })
   y -= 6
   cover.drawLine({ start: { x: 40, y }, end: { x: width - 40, y }, thickness: 0.5 })
@@ -47,8 +66,9 @@ export async function exportReceiptsPDF(expenses: Expense[], monthLabel: string,
     }
     total += e.amount
     cover.drawText(formatDateBR(e.date), { x: 40, y, size: 9, font })
-    cover.drawText(trunc(e.vendor || '—', 40), { x: 110, y, size: 9, font })
-    cover.drawText(CATEGORY_LABELS[e.category], { x: 320, y, size: 9, font })
+    cover.drawText(trunc(e.invoiceNumber || '—', 9), { x: 95, y, size: 9, font })
+    cover.drawText(trunc(e.vendor || '—', 36), { x: 150, y, size: 9, font })
+    cover.drawText(CATEGORY_LABELS[e.category], { x: 350, y, size: 9, font })
     cover.drawText(formatBRL(e.amount), { x: 500, y, size: 9, font })
     y -= 16
   }
@@ -78,7 +98,8 @@ export async function exportReceiptsPDF(expenses: Expense[], monthLabel: string,
   }
 
   const slug = (titulo ?? 'despesas').toLowerCase().replace(/[^a-z]+/g, '-')
-  download(new Blob([(await pdf.save()) as BlobPart], { type: 'application/pdf' }), `comprovantes-${slug}-${monthLabel.replace(/\s+/g, '-')}.pdf`)
+  const name = `comprovantes-${slug}-${monthLabel.toLowerCase().replace(/\s+/g, '-')}.pdf`
+  await deliver(new Blob([(await pdf.save()) as BlobPart], { type: 'application/pdf' }), name)
 }
 
 /* ---------- planilha no modelo "Relatório de Viagem" (Scheffer) ---------- */
@@ -100,11 +121,12 @@ const CAT_COL: Record<Category, number> = {
   outros: 9,
 }
 
-export function exportRelatorioXLSX(
+export async function exportRelatorioXLSX(
   expenses: Expense[],
   profile: Profile,
   periodo: string,
   tipo: string,
+  adiantamento = 0,
 ) {
   const blank = () => Array<string | number>(NCOLS).fill('')
   const aoa: (string | number)[][] = []
@@ -125,6 +147,7 @@ export function exportRelatorioXLSX(
   for (const e of expenses) {
     const row = blank()
     row[0] = formatDateBR(e.date)
+    row[1] = e.invoiceNumber || ''
     row[2] = e.vendor || e.description || CATEGORY_LABELS[e.category]
     const col = CAT_COL[e.category]
     row[col] = e.amount
@@ -144,10 +167,10 @@ export function exportRelatorioXLSX(
 
   aoa.push([])
   const sumRowIdx = aoa.length
-  const adiantamento = 0
-  aoa.push(['', '', '', '', '', '', '', 'TOTAL DESPESAS', '', '', total])
-  aoa.push(['', '', '', '', '', '', '', '(-) ADIANTAMENTO', '', '', adiantamento])
-  aoa.push(['', '', '', '', '', '', '', 'SALDO', '', '', adiantamento - total])
+  const round2 = (n: number) => Math.round(n * 100) / 100
+  aoa.push(['', '', '', '', '', '', '', 'TOTAL DESPESAS', '', '', round2(total)])
+  aoa.push(['', '', '', '', '', '', '', '(-) ADIANTAMENTO', '', '', round2(adiantamento)])
+  aoa.push(['', '', '', '', '', '', '', 'SALDO', '', '', round2(adiantamento - total)])
   aoa.push([])
   aoa.push(['01- Anexar os comprovantes que justifiquem as despesas (recibos, notas fiscais, bilhetes), em ordem cronológica'])
   aoa.push(['02- Solicite aprovação de seu superior imediato'])
@@ -202,7 +225,12 @@ export function exportRelatorioXLSX(
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Relatório')
   const slug = tipo.toLowerCase().replace(/[^a-z]+/g, '-')
-  XLSX.writeFile(wb, `relatorio-${slug}-${periodo.replace(/\s+/g, '-')}.xlsx`)
+  const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+  const name = `relatorio-${slug}-${periodo.toLowerCase().replace(/\s+/g, '-')}.xlsx`
+  await deliver(
+    new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    name,
+  )
 }
 
 function trunc(s: string, n: number): string {

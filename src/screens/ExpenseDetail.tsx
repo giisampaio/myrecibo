@@ -13,6 +13,8 @@ import {
   type ReimbursementStatus,
 } from '../types'
 import AppShell from '../components/AppShell'
+import Field from '../components/Field'
+import PayToggle from '../components/PayToggle'
 
 export default function ExpenseDetail() {
   const navigate = useNavigate()
@@ -25,6 +27,7 @@ export default function ExpenseDetail() {
   const [date, setDate] = useState(todayISO())
   const [vendor, setVendor] = useState('')
   const [description, setDescription] = useState('')
+  const [invoiceNumber, setInvoiceNumber] = useState('')
   const [reimbursement, setReimbursement] = useState<ReimbursementStatus>('na')
   const [photoUrl, setPhotoUrl] = useState<string>()
   const [lightbox, setLightbox] = useState(false)
@@ -39,6 +42,7 @@ export default function ExpenseDetail() {
     setDate(expense.date)
     setVendor(expense.vendor)
     setDescription(expense.description)
+    setInvoiceNumber(expense.invoiceNumber ?? '')
     setReimbursement(expense.reimbursement)
     if (expense.photo) {
       const url = URL.createObjectURL(expense.photo)
@@ -62,6 +66,7 @@ export default function ExpenseDetail() {
       date,
       vendor: vendor.trim(),
       description: description.trim(),
+      invoiceNumber: invoiceNumber.trim() || undefined,
       reimbursement: reimb,
     })
     navigate('/despesas', { replace: true })
@@ -124,15 +129,18 @@ export default function ExpenseDetail() {
           <div className="grid grid-cols-3 gap-2">
             {(['pendente', 'solicitado', 'pago'] as ReimbursementStatus[]).map((s) => {
               const active = (reimbursement === 'na' ? 'pendente' : reimbursement) === s
+              const color = `var(--status-${s})`
               return (
                 <button
                   key={s}
                   onClick={() => setReimbursement(s)}
                   className="press rounded-xl border py-2.5 text-xs font-medium transition-colors"
                   style={{
-                    borderColor: active ? 'var(--ink)' : 'var(--border)',
-                    backgroundColor: active ? 'var(--surface-2)' : 'var(--surface)',
-                    color: 'var(--text)',
+                    borderColor: active ? color : 'var(--border)',
+                    backgroundColor: active
+                      ? `color-mix(in srgb, ${color} 12%, transparent)`
+                      : 'var(--surface)',
+                    color: active ? color : 'var(--text)',
                   }}
                 >
                   {REIMBURSEMENT_LABELS[s]}
@@ -159,6 +167,15 @@ export default function ExpenseDetail() {
 
       <Field label="Estabelecimento">
         <input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Opcional" className="input" />
+      </Field>
+
+      <Field label="Nº da nota (NF)">
+        <input
+          value={invoiceNumber}
+          onChange={(e) => setInvoiceNumber(e.target.value)}
+          placeholder="Opcional — vai para a coluna Nº NF do relatório"
+          className="input"
+        />
       </Field>
 
       <Field label="Observação">
@@ -200,37 +217,3 @@ export default function ExpenseDetail() {
   )
 }
 
-function PayToggle({
-  active,
-  onClick,
-  Icon,
-  label,
-}: {
-  active: boolean
-  onClick: () => void
-  Icon: typeof Building2
-  label: string
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="press flex flex-col items-center gap-2 rounded-xl border py-4 transition-colors"
-      style={{
-        borderColor: active ? 'var(--ink)' : 'var(--border)',
-        backgroundColor: active ? 'var(--surface-2)' : 'var(--surface)',
-      }}
-    >
-      <Icon size={22} className="text-[var(--text)]" />
-      <span className="text-sm font-medium text-[var(--text)]">{label}</span>
-    </button>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="mb-3 block">
-      <span className="mb-1 block text-xs font-medium text-[var(--text-muted)]">{label}</span>
-      {children}
-    </label>
-  )
-}
