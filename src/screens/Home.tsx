@@ -10,6 +10,7 @@ import AppShell from '../components/AppShell'
 import MonthNav from '../components/MonthNav'
 import StatCard from '../components/StatCard'
 import StatusBadge from '../components/StatusBadge'
+import SyncBadge from '../components/SyncBadge'
 
 type Filter = 'todas' | 'corporativo' | 'pessoal' | 'sem-foto'
 
@@ -74,7 +75,7 @@ export default function Home() {
   const filtering = query.trim() !== '' || filter !== 'todas'
 
   return (
-    <AppShell title="Despesas">
+    <AppShell title="Despesas" action={<SyncBadge />}>
       <MonthNav label={monthLabel} onPrev={() => shift(-1)} onNext={() => shift(1)} />
 
       <div className="mb-3 grid grid-cols-2 gap-3">

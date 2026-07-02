@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Building2, User, Trash2, X } from 'lucide-react'
 import { db } from '../db/db'
 import { updateExpense, softDeleteExpense } from '../db/repository'
+import { fetchPhoto } from '../lib/sync'
 import { parseBRL, todayISO } from '../lib/format'
 import {
   CATEGORY_LABELS,
@@ -50,6 +51,9 @@ export default function ExpenseDetail() {
       return () => URL.revokeObjectURL(url)
     }
     setPhotoUrl(undefined)
+    // Foto só na nuvem (registro veio de outro aparelho): baixa uma vez;
+    // o useLiveQuery re-dispara este efeito quando o blob chega ao Dexie.
+    if (expense.photoPath) void fetchPhoto(expense)
   }, [expense])
 
   async function onSave() {

@@ -1,4 +1,5 @@
 import { db } from './db'
+import { scheduleSync, currentUserId } from '../lib/sync'
 import type {
   Category,
   Expense,
@@ -35,7 +36,7 @@ export async function addExpense(input: NewExpenseInput): Promise<string> {
   const now = new Date().toISOString()
   const expense: Expense = {
     id: uuid(),
-    userId: null,
+    userId: currentUserId(),
     date: input.date,
     amount: input.amount,
     paymentType: input.paymentType,
@@ -51,6 +52,7 @@ export async function addExpense(input: NewExpenseInput): Promise<string> {
     updatedAt: now,
   }
   await db.expenses.add(expense)
+  scheduleSync()
   return expense.id
 }
 
@@ -58,7 +60,12 @@ export async function updateExpense(
   id: string,
   patch: Partial<Expense>,
 ): Promise<void> {
-  await db.expenses.update(id, { ...patch, updatedAt: new Date().toISOString() })
+  await db.expenses.update(id, {
+    ...patch,
+    sync: 'local',
+    updatedAt: new Date().toISOString(),
+  })
+  scheduleSync()
 }
 
 export async function softDeleteExpense(id: string): Promise<void> {
@@ -67,6 +74,7 @@ export async function softDeleteExpense(id: string): Promise<void> {
     sync: 'local',
     updatedAt: new Date().toISOString(),
   })
+  scheduleSync()
 }
 
 export async function setReimbursement(
@@ -77,6 +85,7 @@ export async function setReimbursement(
   await db.expenses.bulkUpdate(
     ids.map((id) => ({ key: id, changes: { reimbursement: status, sync: 'local', updatedAt: now } })),
   )
+  scheduleSync()
 }
 
 export function monthRange(year: number, month0: number): [string, string] {
