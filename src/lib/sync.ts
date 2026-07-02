@@ -21,6 +21,20 @@ let currentUid: string | null = null
 let syncing = false
 let timer: ReturnType<typeof setTimeout> | undefined
 let backoff = 0
+let profileEnsured: string | null = null // uid já garantido nesta sessão
+
+// mini-store do estado "sincronizando" (para o badge girar)
+const syncListeners = new Set<(s: boolean) => void>()
+function setSyncing(v: boolean) {
+  syncing = v
+  for (const cb of syncListeners) cb(v)
+}
+/** Observa o estado de sincronização (retorna o unsubscribe). */
+export function onSyncState(cb: (syncing: boolean) => void): () => void {
+  syncListeners.add(cb)
+  cb(syncing)
+  return () => syncListeners.delete(cb)
+}
 
 /** Liga a sincronização para o usuário logado. Retorna o cleanup. */
 export function startSync(uid: string): () => void {
@@ -31,7 +45,7 @@ export function startSync(uid: string): () => void {
   }
   window.addEventListener('online', onOnline)
   document.addEventListener('visibilitychange', onVisible)
-  scheduleSync(800)
+  void syncNow() // primeiro ciclo imediato (a adoção acontece dentro dele)
   return () => {
     window.removeEventListener('online', onOnline)
     document.removeEventListener('visibilitychange', onVisible)
@@ -52,12 +66,16 @@ export function scheduleSync(delayMs = 3000): void {
   timer = setTimeout(() => void syncNow(), delayMs)
 }
 
-/** Um ciclo completo: push (prioridade) e depois pull. */
+/** Um ciclo completo: adoção → push (prioridade) → pull. */
 export async function syncNow(): Promise<void> {
   const uid = currentUid
   if (!uid || syncing || !isSupabaseEnabled || !navigator.onLine) return
-  syncing = true
+  setSyncing(true)
   try {
+    // Passo 0 (idempotente): despesas criadas antes do login viram desta conta.
+    // Fica DENTRO do ciclo para nenhuma corrida de login deixá-las para trás.
+    await adoptOrphans(uid)
+    await ensureProfile(uid)
     await pushProfile(uid)
     await pushExpenses(uid)
     await pullProfile(uid)
@@ -68,8 +86,40 @@ export async function syncNow(): Promise<void> {
     backoff = Math.min(backoff + 1, 5)
     scheduleSync(2000 * 2 ** backoff)
   } finally {
-    syncing = false
+    setSyncing(false)
   }
+}
+
+/** Adota despesas locais sem dono (criadas antes do login). */
+async function adoptOrphans(uid: string): Promise<void> {
+  await db.expenses
+    .filter((e) => e.userId == null)
+    .modify((e) => {
+      e.userId = uid
+      e.sync = 'local'
+    })
+}
+
+/** Garante a linha em myrecibo.profiles (1x por sessão; cobre também o
+ *  login via link de confirmação de e-mail, que não passa pelo formulário). */
+async function ensureProfile(uid: string): Promise<void> {
+  if (profileEnsured === uid) return
+  const { data, error } = await mdb().from('profiles').select('id').eq('id', uid).maybeSingle()
+  if (error) throw error
+  if (!data) {
+    const p = getProfile()
+    const { error: insErr } = await mdb().from('profiles').insert({
+      id: uid,
+      colaborador: p.colaborador,
+      empresa: p.empresa,
+      filial: p.filial,
+      centro_custo: p.centroCusto,
+      objetivo: p.objetivo,
+      updated_at: new Date().toISOString(),
+    })
+    if (insErr) throw insErr
+  }
+  profileEnsured = uid
 }
 
 /* ---------------- despesas: push ---------------- */

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase, isSupabaseEnabled, mdb } from './supabase'
-import { getProfile } from './profile'
-import { db } from '../db/db'
+import { supabase, isSupabaseEnabled } from './supabase'
+import { scheduleSync } from './sync'
 
 /**
  * Sessão do usuário. Com o Supabase desligado (sem env), `enabled` é false e
@@ -40,36 +39,10 @@ export function authErrorPt(message: string): string {
 }
 
 /**
- * Primeiro acesso de uma conta neste aparelho: garante a linha em
- * myrecibo.profiles (existir lá = ser usuário do MyRecibo) e ADOTA as
- * despesas locais sem dono (userId null) para esta conta.
+ * Pós-login: só agenda um ciclo de sync. A adoção das despesas locais e a
+ * criação do perfil acontecem DENTRO do ciclo (sync.ts) — assim nenhum
+ * caminho de login (formulário, link de confirmação, recuperação) fica sem.
  */
-export async function onSignedIn(userId: string): Promise<void> {
-  // adoção das despesas anônimas criadas antes do login
-  await db.expenses
-    .filter((e) => e.userId == null)
-    .modify((e) => {
-      e.userId = userId
-      e.sync = 'local'
-    })
-
-  // perfil: cria se não existir (nunca sobrescreve um remoto mais novo aqui;
-  // o merge fino acontece no sync)
-  try {
-    const { data } = await mdb().from('profiles').select('id').eq('id', userId).maybeSingle()
-    if (!data) {
-      const p = getProfile()
-      await mdb().from('profiles').insert({
-        id: userId,
-        colaborador: p.colaborador,
-        empresa: p.empresa,
-        filial: p.filial,
-        centro_custo: p.centroCusto,
-        objetivo: p.objetivo,
-        updated_at: new Date().toISOString(),
-      })
-    }
-  } catch {
-    /* offline ou schema ainda não exposto: o sync tenta de novo depois */
-  }
+export async function onSignedIn(_userId: string): Promise<void> {
+  scheduleSync(500)
 }

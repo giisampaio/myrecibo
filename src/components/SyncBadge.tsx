@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Cloud, CloudOff, CloudUpload } from 'lucide-react'
+import { Cloud, CloudOff, CloudUpload, RefreshCw } from 'lucide-react'
 import { db } from '../db/db'
 import { isSupabaseEnabled } from '../lib/supabase'
-import { syncNow } from '../lib/sync'
+import { syncNow, onSyncState } from '../lib/sync'
 
 /**
  * Indicador de backup na nuvem: ✓ tudo sincronizado, n pendentes, ou offline.
@@ -11,6 +11,7 @@ import { syncNow } from '../lib/sync'
  */
 export default function SyncBadge() {
   const [online, setOnline] = useState(navigator.onLine)
+  const [syncing, setSyncing] = useState(false)
   const pending = useLiveQuery(() => db.expenses.where('sync').equals('local').count(), [], 0)
 
   useEffect(() => {
@@ -18,21 +19,25 @@ export default function SyncBadge() {
     const down = () => setOnline(false)
     window.addEventListener('online', up)
     window.addEventListener('offline', down)
+    const unsub = onSyncState(setSyncing)
     return () => {
       window.removeEventListener('online', up)
       window.removeEventListener('offline', down)
+      unsub()
     }
   }, [])
 
   if (!isSupabaseEnabled) return null
 
-  const state = !online ? 'offline' : pending > 0 ? 'pendente' : 'ok'
+  const state = syncing ? 'sync' : !online ? 'offline' : pending > 0 ? 'pendente' : 'ok'
   const label =
-    state === 'offline'
-      ? 'Offline — sincroniza quando voltar a internet'
-      : state === 'pendente'
-        ? `${pending} despesa(s) aguardando backup`
-        : 'Backup em dia'
+    state === 'sync'
+      ? 'Sincronizando…'
+      : state === 'offline'
+        ? 'Offline — sincroniza quando voltar a internet'
+        : state === 'pendente'
+          ? `${pending} despesa(s) aguardando backup`
+          : 'Backup em dia'
 
   return (
     <button
@@ -41,6 +46,9 @@ export default function SyncBadge() {
       title={label}
       className="icon-btn relative"
     >
+      {state === 'sync' && (
+        <RefreshCw size={20} className="animate-spin text-[var(--text-muted)]" />
+      )}
       {state === 'offline' && <CloudOff size={20} className="text-[var(--text-muted)]" />}
       {state === 'pendente' && (
         <>
