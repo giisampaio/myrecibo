@@ -35,6 +35,23 @@ export interface TemplateMapping {
   cells: {
     adiantamento?: string
   }
+  /**
+   * Células de fórmula cujo VALOR EM CACHE precisa ser atualizado: leitores
+   * rápidos (Quick Look do iPhone, pré-visualizações) não recalculam fórmulas
+   * — mostram o cache. O Excel de verdade recalcula ao abrir e chega ao mesmo
+   * número; escrever o cache correto atende os dois.
+   */
+  cached?: {
+    /** linha com SUM por coluna (só atualiza células que tenham fórmula) */
+    sumRow?: number
+    /** células cujo cache = total geral */
+    total?: string[]
+    /** células cujo cache = adiantamento − total */
+    saldo?: string[]
+  }
+  /** Correções pontuais de fórmulas quebradas no arquivo da empresa
+   *  (substituição literal no XML da worksheet). */
+  formulaFixes?: { find: string; replace: string }[]
 }
 
 export interface ReportTemplateDef {
@@ -91,6 +108,15 @@ export const SCHEFFER_TEMPLATE: ReportTemplateDef = {
     cells: {
       adiantamento: 'K53',
     },
+    cached: {
+      sumRow: 51, // linha MÉDIA/somatórios (F51/J51/K51 têm fórmulas)
+      total: ['K52'], // TOTAL DESPESAS (fórmula =K51)
+      saldo: ['K54'], // SALDO (fórmula =K53-K52)
+    },
+    formulaFixes: [
+      // soma de DIVERSOS veio com intervalo errado no arquivo original
+      { find: 'SUM(J25:J48)', replace: 'SUM(J12:J50)' },
+    ],
   },
 }
 
@@ -107,6 +133,9 @@ export async function fillReportXlsx(
   const zip = unzipSync(new Uint8Array(await res.arrayBuffer()))
   const m = def.mapping
   let xml = strFromU8(zip[m.sheetPath])
+
+  // correções declaradas de fórmulas do arquivo original
+  for (const fix of m.formulaFixes ?? []) xml = xml.replace(fix.find, fix.replace)
 
   // cabeçalho
   const p = payload.profile
@@ -126,6 +155,7 @@ export async function fillReportXlsx(
   const slots = m.table.lastRow - m.table.firstRow + 1
   const list = [...payload.expenses].sort((a, b) => a.date.localeCompare(b.date))
   const fits = list.slice(0, slots)
+  const colSums = new Map<string, number>()
   for (let i = 0; i < fits.length; i++) {
     const e = fits[i]
     const row = m.table.firstRow + i
@@ -140,10 +170,23 @@ export async function fillReportXlsx(
     const col = m.table.categoryCols[e.category] ?? m.table.categoryCols.fallback
     xml = setNumber(xml, `${col}${row}`, round2(e.amount))
     xml = setNumber(xml, `${m.table.totalCol}${row}`, round2(e.amount))
+    colSums.set(col, (colSums.get(col) ?? 0) + e.amount)
+    colSums.set(m.table.totalCol, (colSums.get(m.table.totalCol) ?? 0) + e.amount)
   }
+  const total = round2(colSums.get(m.table.totalCol) ?? 0)
 
   if (m.cells.adiantamento && payload.adiantamento > 0)
     xml = setNumber(xml, m.cells.adiantamento, round2(payload.adiantamento))
+
+  // Atualiza o CACHE das fórmulas (Quick Look/preview não recalcula)
+  if (m.cached?.sumRow) {
+    const cols = new Set([...Object.values(m.table.categoryCols), m.table.totalCol])
+    for (const col of cols)
+      xml = setCachedFormula(xml, `${col}${m.cached.sumRow}`, round2(colSums.get(col) ?? 0))
+  }
+  for (const ref of m.cached?.total ?? []) xml = setCachedFormula(xml, ref, total)
+  for (const ref of m.cached?.saldo ?? [])
+    xml = setCachedFormula(xml, ref, round2(payload.adiantamento - total))
 
   const out: Record<string, Uint8Array> = { ...zip }
   out[m.sheetPath] = strToU8(xml)
@@ -165,6 +208,17 @@ function setNumber(xml: string, ref: string, value: number): string {
 function setText(xml: string, ref: string, value: string): string {
   if (!value) return setCell(xml, ref, null)
   return setCell(xml, ref, `<is><t xml:space="preserve">${escapeXml(value)}</t></is>`, 'inlineStr')
+}
+
+/** Atualiza só o <v> em cache de uma célula de FÓRMULA (mantém o <f>).
+ *  Célula sem fórmula fica como está. */
+function setCachedFormula(xml: string, ref: string, value: number): string {
+  const re = new RegExp(`<c r="${ref}"([^>]*)>([\\s\\S]*?)</c>`)
+  const m = re.exec(xml)
+  if (!m) return xml
+  const fm = /<f[^>]*>[\s\S]*?<\/f>|<f[^>]*\/>/.exec(m[2])
+  if (!fm) return xml
+  return xml.replace(m[0], `<c r="${ref}"${m[1]}>${fm[0]}<v>${value}</v></c>`)
 }
 
 /** Substitui o conteúdo de uma célula existente ou insere na linha (em ordem). */

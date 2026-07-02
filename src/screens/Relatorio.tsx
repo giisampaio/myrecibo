@@ -8,6 +8,7 @@ import { getProfile } from '../lib/profile'
 import { formatBRL, formatDateBR, parseBRL } from '../lib/format'
 import Toast, { type ToastData } from '../components/Toast'
 import MonthNav from '../components/MonthNav'
+import RangeCalendar from '../components/RangeCalendar'
 import SegmentedTabs from '../components/SegmentedTabs'
 import StatCard from '../components/StatCard'
 import StatusBadge from '../components/StatusBadge'
@@ -36,10 +37,11 @@ export default function Relatorio() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<ToastData | null>(null)
   const [adiantamento, setAdiantamento] = useState('')
-  // Período: mês (padrão) ou intervalo personalizado (De/Até, inclusivo)
-  const [custom, setCustom] = useState<{ start: string; end: string } | null>(null)
+  // Período: mês (padrão) ou intervalo personalizado (inclusivo).
+  // `end: null` = usuário marcou o início e ainda vai tocar no fim.
+  const [custom, setCustom] = useState<{ start: string; end: string | null } | null>(null)
   const [start, end] = useMemo(() => {
-    if (custom) return [custom.start, nextDay(custom.end)] as [string, string]
+    if (custom) return [custom.start, nextDay(custom.end ?? custom.start)] as [string, string]
     return monthRange(ym.year, ym.month0)
   }, [ym, custom])
 
@@ -82,7 +84,7 @@ export default function Relatorio() {
     year: 'numeric',
   })
   const periodo = custom
-    ? `${formatDateBR(custom.start)} a ${formatDateBR(custom.end)}`
+    ? `${formatDateBR(custom.start)} a ${formatDateBR(custom.end ?? custom.start)}`
     : monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)
 
   const selectedList = pess.filter((e) => selected.has(e.id))
@@ -155,9 +157,9 @@ export default function Relatorio() {
     >
       {custom ? (
         <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-1 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]">
-              <CalendarRange size={14} /> Período personalizado
+              <CalendarRange size={14} /> {periodo}
             </span>
             <button
               onClick={() => setCustom(null)}
@@ -166,30 +168,11 @@ export default function Relatorio() {
               <X size={14} /> Usar mês
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="mb-1 block text-[10px] text-[var(--text-muted)]">DE</span>
-              <input
-                type="date"
-                value={custom.start}
-                max={custom.end}
-                onChange={(e) =>
-                  e.target.value && setCustom({ ...custom, start: e.target.value })
-                }
-                className="input"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-[10px] text-[var(--text-muted)]">ATÉ</span>
-              <input
-                type="date"
-                value={custom.end}
-                min={custom.start}
-                onChange={(e) => e.target.value && setCustom({ ...custom, end: e.target.value })}
-                className="input"
-              />
-            </label>
-          </div>
+          <RangeCalendar
+            start={custom.start}
+            end={custom.end}
+            onChange={(s, e) => setCustom({ start: s, end: e })}
+          />
         </div>
       ) : (
         <>
