@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { LogOut, Building2, KeyRound, Loader2 } from 'lucide-react'
 import { getProfile, saveProfile, type Profile } from '../lib/profile'
+import { getNativeCamera, setNativeCamera } from '../lib/prefs'
 import { supabase, isSupabaseEnabled, mdb } from '../lib/supabase'
 import { authErrorPt } from '../lib/auth'
 import { touchProfile, syncNow } from '../lib/sync'
@@ -23,6 +24,9 @@ export default function Perfil() {
   // empresa
   const [companyName, setCompanyName] = useState<string | null>(null)
   const [joinCode, setJoinCode] = useState('')
+
+  // preferências
+  const [nativeCam, setNativeCam] = useState(() => getNativeCamera())
 
   useEffect(() => {
     if (!supabase) return
@@ -181,6 +185,38 @@ export default function Perfil() {
           </div>
         </section>
       )}
+
+      {/* ---- Preferências ---- */}
+      <section className="mb-6">
+        <SectionTitle>Preferências</SectionTitle>
+        <button
+          onClick={() => {
+            const v = !nativeCam
+            setNativeCam(v)
+            setNativeCamera(v)
+          }}
+          className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left"
+          role="switch"
+          aria-checked={nativeCam}
+        >
+          <span className="text-sm">
+            <span className="block font-medium">Câmera nativa do iPhone</span>
+            <span className="block text-xs text-[var(--text-muted)]">
+              Abre a câmera da Apple, sem aviso de permissão. Recorte e leitura continuam
+              automáticos.
+            </span>
+          </span>
+          <span
+            className="relative h-7 w-12 shrink-0 rounded-full transition-colors"
+            style={{ backgroundColor: nativeCam ? 'var(--ink)' : 'var(--border-strong)' }}
+          >
+            <span
+              className="absolute top-0.5 h-6 w-6 rounded-full bg-white transition-transform"
+              style={{ transform: nativeCam ? 'translateX(22px)' : 'translateX(2px)' }}
+            />
+          </span>
+        </button>
+      </section>
 
       {/* ---- Cabeçalho do relatório ---- */}
       <section>

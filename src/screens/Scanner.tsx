@@ -4,6 +4,7 @@ import { X, Flashlight, Image as ImageIcon, Keyboard, Check, Camera } from 'luci
 import { setPendingPhoto } from '../lib/pendingPhoto'
 import { warmupScanner, whenScannerReady, detectDocument } from '../lib/scannerWorker'
 import { warmupOcr } from '../lib/ocr'
+import { getNativeCamera, isCameraHintDismissed, dismissCameraHint } from '../lib/prefs'
 
 const READY_WAIT_MS = 15000 // espera o OpenCV ficar pronto no worker
 const PROCESS_MS = 15000 // tempo máximo para detectar/recortar
@@ -26,6 +27,9 @@ export default function Scanner() {
   const [cameraError, setCameraError] = useState(false)
   const [hasTorch, setHasTorch] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
+  // Câmera nativa do iPhone: sem getUserMedia = sem aviso de permissão
+  const [native] = useState(() => getNativeCamera())
+  const [showHint, setShowHint] = useState(() => getNativeCamera() === false && !isCameraHintDismissed())
 
   const [fullUrl, setFullUrl] = useState('')
   const [result, setResult] = useState<Result | null>(null)
@@ -33,7 +37,7 @@ export default function Scanner() {
   const [animateIn, setAnimateIn] = useState(false)
 
   useEffect(() => {
-    startCamera()
+    if (!native) startCamera() // no modo nativo NADA de getUserMedia (zero prompt)
     // Pré-carrega o OpenCV no worker (persistente) já na abertura da câmera
     warmupScanner()
     // Pré-carrega o leitor de cupom (modelos do OCR) enquanto o usuário enquadra
@@ -44,7 +48,7 @@ export default function Scanner() {
 
   // Exibe a câmera num canvas (sem o overlay nativo do <video>); ~30fps, object-cover.
   useEffect(() => {
-    if (mode !== 'camera') return
+    if (mode !== 'camera' || native) return
     let raf = 0
     let last = 0
     const draw = () => {
@@ -224,9 +228,41 @@ export default function Scanner() {
         />
         <canvas ref={canvasRef} className="relative block h-full w-full" />
 
-        {mode === 'camera' && !cameraError && <CornerGuide />}
+        {mode === 'camera' && !cameraError && !native && <CornerGuide />}
 
-        {cameraError && mode === 'camera' && (
+        {mode === 'camera' && native && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-10 text-center">
+            <Camera size={46} className="text-white/70" />
+            <p className="text-base font-medium text-white">Câmera do iPhone</p>
+            <p className="text-sm text-white/60">
+              A foto volta pro app com recorte e leitura automáticos — sem aviso de permissão.
+            </p>
+          </div>
+        )}
+
+        {mode === 'camera' && !native && showHint && (
+          <div
+            className="absolute inset-x-4 flex items-start gap-2 rounded-xl bg-black/60 p-3 text-xs text-white/90 backdrop-blur"
+            style={{ top: 'calc(env(safe-area-inset-top) + 64px)' }}
+          >
+            <span className="flex-1">
+              Para o iPhone parar de pedir a câmera: <b>Ajustes → Apps → MyRecibo → Câmera →
+              Permitir</b>. Ou ative a câmera nativa no Perfil.
+            </span>
+            <button
+              onClick={() => {
+                dismissCameraHint()
+                setShowHint(false)
+              }}
+              aria-label="Fechar dica"
+              className="shrink-0 rounded-full bg-white/15 p-1"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {cameraError && mode === 'camera' && !native && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
             <Camera size={44} className="text-white/70" />
             <p className="text-white/80">
@@ -328,7 +364,9 @@ export default function Scanner() {
         {mode === 'camera' ? (
           <>
             <p className="mb-5 text-center text-sm text-white/90 drop-shadow">
-              Enquadre o comprovante e toque para fotografar
+              {native
+                ? 'Toque para abrir a câmera do iPhone'
+                : 'Enquadre o comprovante e toque para fotografar'}
             </p>
             <div className="grid grid-cols-3 items-center px-10">
               <label className="press flex flex-col items-center gap-1 justify-self-start text-[11px] text-white/80">
@@ -336,14 +374,30 @@ export default function Scanner() {
                 Galeria
                 <input type="file" accept="image/*" className="hidden" onChange={onPickFromGallery} />
               </label>
-              <button
-                onClick={capturePhoto}
-                disabled={cameraError}
-                className="h-[76px] w-[76px] justify-self-center rounded-full border-4 border-white bg-white/25 p-1 active:bg-white/50 disabled:opacity-40"
-                aria-label="Tirar foto"
-              >
-                <span className="block h-full w-full rounded-full bg-white" />
-              </button>
+              {native ? (
+                <label
+                  className="h-[76px] w-[76px] justify-self-center rounded-full border-4 border-white bg-white/25 p-1 active:bg-white/50"
+                  aria-label="Abrir a câmera do iPhone"
+                >
+                  <span className="block h-full w-full rounded-full bg-white" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={onPickFromGallery}
+                  />
+                </label>
+              ) : (
+                <button
+                  onClick={capturePhoto}
+                  disabled={cameraError}
+                  className="h-[76px] w-[76px] justify-self-center rounded-full border-4 border-white bg-white/25 p-1 active:bg-white/50 disabled:opacity-40"
+                  aria-label="Tirar foto"
+                >
+                  <span className="block h-full w-full rounded-full bg-white" />
+                </button>
+              )}
               <button
                 onClick={() => {
                   stopCamera()
