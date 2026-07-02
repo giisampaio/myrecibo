@@ -49,6 +49,17 @@ export default defineConfig({
             },
           },
           {
+            // Modelos de relatório (xlsx): usa cache mas revalida em segundo
+            // plano — o financeiro pode atualizar o modelo no servidor
+            urlPattern: /\/templates\//,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'report-templates',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 180 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
             // Modelos do PaddleOCR + runtime WASM do ONNX: cacheia no 1º OCR
             urlPattern: /\/(ocr|ort)\/|\.wasm$/,
             handler: 'CacheFirst',

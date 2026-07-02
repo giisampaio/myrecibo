@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { FileText, Table, Settings, Square, CheckSquare } from 'lucide-react'
+import { FileText, Table, Settings, Square, CheckSquare, CalendarRange, X } from 'lucide-react'
 import { db } from '../db/db'
 import { monthRange, setReimbursement } from '../db/repository'
 import { getProfile } from '../lib/profile'
@@ -16,6 +16,18 @@ import AppShell from '../components/AppShell'
 
 type Tab = 'cartao' | 'reembolso'
 
+/** Soma/subtrai um dia numa data ISO (a query usa fim exclusivo). */
+function nextDay(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`)
+  d.setDate(d.getDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+function prevDay(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`)
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
 export default function Relatorio() {
   const now = new Date()
   const [ym, setYm] = useState({ year: now.getFullYear(), month0: now.getMonth() })
@@ -24,7 +36,12 @@ export default function Relatorio() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<ToastData | null>(null)
   const [adiantamento, setAdiantamento] = useState('')
-  const [start, end] = useMemo(() => monthRange(ym.year, ym.month0), [ym])
+  // Período: mês (padrão) ou intervalo personalizado (De/Até, inclusivo)
+  const [custom, setCustom] = useState<{ start: string; end: string } | null>(null)
+  const [start, end] = useMemo(() => {
+    if (custom) return [custom.start, nextDay(custom.end)] as [string, string]
+    return monthRange(ym.year, ym.month0)
+  }, [ym, custom])
 
   // Adiantamento lembrado por mês/aba (só entra na planilha)
   const advKey = `myrecibo.adiantamento.${start}.${tab}`
@@ -64,7 +81,9 @@ export default function Relatorio() {
     month: 'long',
     year: 'numeric',
   })
-  const periodo = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)
+  const periodo = custom
+    ? `${formatDateBR(custom.start)} a ${formatDateBR(custom.end)}`
+    : monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)
 
   const selectedList = pess.filter((e) => selected.has(e.id))
   const sum = (arr: Expense[]) => arr.reduce((s, e) => s + e.amount, 0)
@@ -99,8 +118,18 @@ export default function Relatorio() {
     setBusy('xlsx')
     try {
       const { exportRelatorioXLSX } = await import('../lib/exporters')
-      await exportRelatorioXLSX(arr, getProfile(), periodo, tipo, parseBRL(adiantamento) || 0)
-      setToast({ message: 'Planilha gerada', kind: 'success' })
+      const overflow = await exportRelatorioXLSX(
+        arr,
+        getProfile(),
+        periodo,
+        tipo,
+        parseBRL(adiantamento) || 0,
+      )
+      setToast(
+        overflow > 0
+          ? { message: `Planilha gerada — ${overflow} despesa(s) não couberam no modelo`, kind: 'error' }
+          : { message: 'Planilha gerada', kind: 'success' },
+      )
     } catch {
       setToast({ message: 'Não foi possível gerar a planilha. Tente de novo.', kind: 'error' })
     } finally {
@@ -124,7 +153,58 @@ export default function Relatorio() {
         </Link>
       }
     >
-      <MonthNav label={monthLabel} onPrev={() => shift(-1)} onNext={() => shift(1)} />
+      {custom ? (
+        <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]">
+              <CalendarRange size={14} /> Período personalizado
+            </span>
+            <button
+              onClick={() => setCustom(null)}
+              className="press flex items-center gap-1 text-xs font-medium text-[var(--text-muted)]"
+            >
+              <X size={14} /> Usar mês
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="mb-1 block text-[10px] text-[var(--text-muted)]">DE</span>
+              <input
+                type="date"
+                value={custom.start}
+                max={custom.end}
+                onChange={(e) =>
+                  e.target.value && setCustom({ ...custom, start: e.target.value })
+                }
+                className="input"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] text-[var(--text-muted)]">ATÉ</span>
+              <input
+                type="date"
+                value={custom.end}
+                min={custom.start}
+                onChange={(e) => e.target.value && setCustom({ ...custom, end: e.target.value })}
+                className="input"
+              />
+            </label>
+          </div>
+        </div>
+      ) : (
+        <>
+          <MonthNav label={monthLabel} onPrev={() => shift(-1)} onNext={() => shift(1)} />
+          <button
+            onClick={() => {
+              const [ms, me] = monthRange(ym.year, ym.month0)
+              setCustom({ start: ms, end: prevDay(me) })
+            }}
+            className="press -mt-2 mb-3 flex w-full items-center justify-center gap-1.5 py-1 text-xs font-medium text-[var(--text-muted)]"
+          >
+            <CalendarRange size={14} /> Período personalizado
+          </button>
+        </>
+      )}
 
       <SegmentedTabs
         options={[
